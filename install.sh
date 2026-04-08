@@ -4,7 +4,7 @@ set -e
 # NeeN Desktop Agent - One-line installer for macOS & Linux
 # Usage: curl -fsSL https://releases.neen.ai/install.sh | bash
 
-RELEASE_URL="https://releases.neen.ai/latest"
+RELEASE_URL="https://github.com/Colabrary/NeeN-N-Agent/releases/latest/download"
 APP_NAME="NeeN Desktop Agent"
 BUNDLE_ID="com.neen.desktop-agent"
 LAUNCH_AGENT_LABEL="com.neen.desktop-agent"

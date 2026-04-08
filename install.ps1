@@ -3,7 +3,7 @@
 # Or:    curl.exe -fsSL https://releases.neen.ai/install.ps1 | powershell -
 
 param(
-    [string]$ReleaseUrl = "https://releases.neen.ai/latest",
+    [string]$ReleaseUrl = "https://github.com/Colabrary/NeeN-N-Agent/releases/latest/download",
     [switch]$Uninstall
 )
 
