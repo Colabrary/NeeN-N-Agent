@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NeeN Chat</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f8fafc;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .message {
+            padding: 12px 16px;
+            border-radius: 12px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        
+        .user {
+            background: #667eea;
+            color: white;
+            align-self: flex-end;
+        }
+        
+        .bot {
+            background: white;
+            color: #333;
+            align-self: flex-start;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 12px;
+        }
+        
+        .input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 25px;
+            outline: none;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        
+        .input:focus {
+            border-color: #667eea;
+        }
+        
+        .send {
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s;
+        }
+        
+        .send:hover {
+            background: #5a6fd8;
+            transform: scale(1.05);
+        }
+        
+        .typing {
+            padding: 12px 16px;
+            background: #f1f5f9;
+            border-radius: 12px;
+            align-self: flex-start;
+            color: #64748b;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        🤖 NeeN AI Assistant
+    </div>
+    
+    <div class="messages" id="messages">
+        <div class="message bot">
+            Hello! I'm your NeeN AI assistant. I can help you with various tasks on your system. What would you like me to do?
+        </div>
+    </div>
+    
+    <div class="input-area">
+        <input class="input" id="input" placeholder="Ask me anything or tell me what to do..." onkeypress="if(event.key==='Enter')send()">
+        <button class="send" onclick="send()">→</button>
+    </div>
+
+    <script>
+        const { invoke } = window.__TAURI__.tauri;
+        
+        document.getElementById('input').focus();
+        
+        async function send() {
+            const input = document.getElementById('input');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            addMessage(message, 'user');
+            input.value = '';
+            
+            showTyping();
+            
+            try {
+                const response = await invoke('send_chat_message', { message });
+                hideTyping();
+                addMessage(response, 'bot');
+            } catch (error) {
+                hideTyping();
+                addMessage('Sorry, I encountered an error. Please try again.', 'bot');
+            }
+        }
+        
+        function addMessage(text, type) {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.textContent = text;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function showTyping() {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = 'typing';
+            div.id = 'typing';
+            div.textContent = 'NeeN is thinking...';
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function hideTyping() {
+            const typing = document.getElementById('typing');
+            if (typing) typing.remove();
+        }
+    </script>
+</body>
+</html>

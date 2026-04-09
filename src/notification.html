@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #0a0a0a;
+        color: white;
+        overflow: hidden;
+        border-radius: 14px;
+    }
+    .header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 14px; cursor: move; user-select: none;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .header[data-tauri-drag-region] { -webkit-app-region: drag; }
+    .title { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .close-btn {
+        cursor: pointer; opacity: 0.5; font-size: 14px; padding: 2px 8px;
+        border: none; background: none; color: white; -webkit-app-region: no-drag;
+    }
+    .close-btn:hover { opacity: 1; }
+    .body-text { padding: 10px 14px; font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.5; }
+    .meta { padding: 0 14px 8px; font-size: 11px; color: rgba(255,255,255,0.4); }
+    .reply-section { padding: 8px 14px 14px; }
+    .reply-input {
+        width: 100%; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 8px; color: white; padding: 8px 10px; font-size: 12px; resize: vertical;
+        outline: none; font-family: inherit; min-height: 50px; max-height: 100px; box-sizing: border-box;
+    }
+    .reply-input::placeholder { color: rgba(255,255,255,0.35); }
+    .actions { display: flex; gap: 6px; margin-top: 8px; }
+    .btn {
+        padding: 6px 14px; border-radius: 6px; border: none; font-size: 11px;
+        cursor: pointer; font-weight: 600; -webkit-app-region: no-drag;
+    }
+    .btn-send { background: #25D366; color: white; }
+    .btn-send:hover { background: #1da851; }
+    .btn-send.email { background: #ea4335; }
+    .btn-send.email:hover { background: #c5221f; }
+    .btn-send.sending { opacity: 0.5; pointer-events: none; }
+    .border-left { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 14px 0 0 14px; }
+</style>
+</head>
+<body>
+    <div class="border-left" id="borderLeft"></div>
+    <div class="header" data-tauri-drag-region>
+        <div class="title" id="titleEl"></div>
+        <button class="close-btn" id="closeBtn">✕</button>
+    </div>
+    <div class="body-text" id="bodyEl"></div>
+    <div class="meta" id="metaEl"></div>
+    <div class="reply-section" id="replySection" style="display:none;">
+        <textarea class="reply-input" id="replyInput" placeholder="Type your reply..."></textarea>
+        <div class="actions">
+            <button class="btn btn-send" id="sendBtn">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            activity_reminder: '#ffc107', new_lead: '#4fc3f7', lead_assigned: '#66bb6a',
+            lead_assignment_confirmed: '#81c784', lead_reassigned: '#ff9800',
+            new_message: '#25D366', new_email: '#ea4335', daily_summary: '#9c27b0'
+        };
+        const ICONS = {
+            activity_reminder: '⏰', new_lead: '🆕', lead_assigned: '👤',
+            lead_assignment_confirmed: '✅', lead_reassigned: '🔄',
+            new_message: '💬', new_email: '📧', daily_summary: '📋'
+        };
+
+        // Get notification data from window label (passed as URL params)
+        const params = new URLSearchParams(window.location.search);
+        const type = params.get('type') || '';
+        const title = params.get('title') || 'Notification';
+        const body = params.get('body') || '';
+        const meta = params.get('meta') || '';
+        const channel = params.get('channel') || '';
+        const aiDraft = params.get('aiDraft') || '';
+        const waPhone = params.get('waPhone') || '';
+        const waName = params.get('waName') || '';
+        const waAccountId = params.get('waAccountId') || '';
+        const waEntityType = params.get('waEntityType') || '';
+        const waEntityId = params.get('waEntityId') || '';
+        const emailId = params.get('emailId') || '';
+        const aiPrompt = params.get('aiPrompt') || '';
+
+        // Render
+        document.getElementById('borderLeft').style.background = COLORS[type] || '#ffc107';
+        document.getElementById('titleEl').innerHTML = `${ICONS[type] || '🔔'} ${title}`;
+        document.getElementById('bodyEl').innerHTML = body;
+        document.getElementById('metaEl').textContent = meta;
+
+        if (channel) {
+            document.getElementById('replySection').style.display = 'block';
+            const sendBtn = document.getElementById('sendBtn');
+            const replyInput = document.getElementById('replyInput');
+            if (channel === 'email') sendBtn.classList.add('email');
+
+            // AI draft
+            if (aiPrompt) {
+                replyInput.value = '⏳ AI is drafting a reply...';
+                (async () => {
+                    try {
+                        let attempts = 0;
+                        while (!window.__TAURI__ && attempts < 50) {
+                            await new Promise(r => setTimeout(r, 100)); attempts++;
+                        }
+                        const invoke = window.__TAURI__?.core?.invoke;
+                        if (!invoke) return;
+                        const raw = await invoke('send_chat_message', { message: aiPrompt });
+                        let draft = '';
+                        try { const j = JSON.parse(raw); draft = j.message || j.response || raw; } catch { draft = raw; }
+                        replyInput.value = draft.replace(/<[^>]*>/g, '').trim();
+                    } catch (e) {
+                        replyInput.value = '';
+                        replyInput.placeholder = 'AI draft failed — type manually...';
+                    }
+                })();
+            }
+
+            sendBtn.addEventListener('click', async () => {
+                const text = replyInput.value.trim();
+                if (!text) return;
+                sendBtn.classList.add('sending');
+                sendBtn.textContent = 'Sending...';
+                try {
+                    const invoke = window.__TAURI__?.core?.invoke;
+                    if (!invoke) throw new Error('No invoke');
+                    if (channel === 'whatsapp') {
+                        await invoke('send_whatsapp_reply', {
+                            toPhone: waPhone, message: text, toName: waName || null,
+                            accountId: waAccountId || null, entityType: waEntityType || null, entityId: waEntityId || null
+                        });
+                    } else if (channel === 'email') {
+                        await invoke('send_email_reply', { emailId, body: text, subject: null });
+                    }
+                    sendBtn.textContent = '✓ Sent';
+                    setTimeout(() => {
+                        const win = window.__TAURI__?.window?.getCurrent();
+                        if (win) { win.hide().then(() => win.close()).catch(() => win.close()); }
+                    }, 1500);
+                } catch (e) {
+                    console.error('Reply failed:', e);
+                    sendBtn.classList.remove('sending');
+                    sendBtn.textContent = 'Failed — Retry';
+                }
+            });
+        }
+
+        // Close button
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            const win = window.__TAURI__?.window?.getCurrent();
+            if (win) { win.hide().then(() => win.close()).catch(() => win.close()); }
+        });
+
+        // Auto-close after 60s if no reply section, 120s if reply
+        setTimeout(() => {
+            const win = window.__TAURI__?.window?.getCurrent();
+            if (win) { win.hide().then(() => win.close()).catch(() => win.close()); }
+        }, channel ? 120000 : 30000);
+    </script>
+</body>
+</html>

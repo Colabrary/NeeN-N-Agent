@@ -1,0 +1,9 @@
+# Rust build output
+src-tauri/target/
+
+# Node
+node_modules/
+
+# Temp files
+*.DS_Store
+*.log

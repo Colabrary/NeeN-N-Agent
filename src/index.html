@@ -1,0 +1,2138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .floating-assistant {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            cursor: move;
+            user-select: none;
+            z-index: 9999;
+        }
+        
+        .main-button {
+            width: 40px;
+            height: 40px;
+            background: black;
+            border: 2px solid white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .main-button:hover {
+            transform: scale(1.05);
+        }
+        
+        .logo-dots {
+            font-size: 14px;
+            color: white;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        
+        .input-container {
+            position: relative;
+            min-width: 80px;
+            max-width: calc(100vw - 40px);
+            min-height: 40px; /* Minimum height for collapsed state */
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(20px);
+            border: 2px solid white;
+            border-radius: 25px;
+            padding: 0;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: stretch; /* Changed from center to stretch */
+            transition: all 0.3s ease;
+        }
+        
+        .input-container.processing {
+            animation: pulse-border 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-border {
+            0%, 100% {
+                border-color: white;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.3), 0 0 0 0 rgba(255,255,255,0.7);
+            }
+            50% {
+                border-color: rgba(255,255,255,0.5);
+                box-shadow: 0 8px 25px rgba(0,0,0,0.3), 0 0 20px 5px rgba(255,255,255,0.3);
+            }
+        }
+        
+        .input-container.collapsed {
+            width: 40px;
+            height: 40px;
+            padding: 8px;
+        }
+        
+        .input-container.expanded {
+            width: 500px;
+        }
+        
+        .text-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 16px;
+            padding: 15px 50px 15px 50px;
+            outline: none;
+            border-radius: 25px;
+            transition: all 0.3s ease;
+            resize: none;
+            overflow: hidden;
+            height: auto;
+            min-height: 20px; /* Single line height */
+            max-height: 240px; /* 10 lines max */
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 20px;
+        }
+        
+        .text-input.hidden {
+            width: 0;
+            padding: 15px 0;
+            opacity: 0;
+        }
+        
+        .input-dots {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 8px;
+            color: white;
+            font-weight: bold;
+            letter-spacing: 1px;
+            cursor: pointer;
+            z-index: 11;
+            user-select: none;
+            display: flex;
+            gap: 1px;
+            padding: 6px;
+        }
+        
+        .input-dots span {
+            display: inline-block;
+            animation: blink 1.4s infinite both;
+        }
+        
+        .input-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .input-dots.processing span {
+            animation: dance 0.6s infinite both;
+        }
+        
+        .input-dots.processing span:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+        
+        @keyframes blink {
+            0%, 80%, 100% { opacity: 1; }
+            40% { opacity: 0.3; }
+        }
+        
+        @keyframes dance {
+            0%, 100% { 
+                transform: translateY(0) scale(1);
+            }
+            25% { 
+                transform: translateY(-3px) scale(1.1);
+            }
+            50% { 
+                transform: translateY(0) scale(0.9);
+            }
+            75% { 
+                transform: translateY(3px) scale(1.1);
+            }
+        }
+        
+        .text-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .mic-button {
+            width: 40px;
+            height: 40px;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 5px;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+            align-self: center; /* Center the button vertically */
+        }
+        
+        .mic-button.hidden {
+            width: 0;
+            opacity: 0;
+        }
+        
+        .mic-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .mic-button.voice-active {
+            background: #2ecc71 !important;
+            animation: voicePulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes voicePulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7);
+            }
+            50% { 
+                transform: scale(1.1);
+                box-shadow: 0 0 0 10px rgba(46, 204, 113, 0);
+            }
+        }
+        
+        .input-dots.speaking {
+            animation: speakingPulse 0.8s ease-in-out infinite;
+        }
+        
+        .input-dots.listening {
+            animation: listeningGlow 2s ease-in-out infinite;
+        }
+        
+        @keyframes speakingPulse {
+            0%, 100% { 
+                transform: scale(1);
+                color: #ff4757;
+                text-shadow: 0 0 10px rgba(255, 71, 87, 0.5);
+            }
+            50% { 
+                transform: scale(1.2);
+                color: #ff3742;
+                text-shadow: 0 0 20px rgba(255, 71, 87, 0.8);
+            }
+        }
+        
+        @keyframes listeningGlow {
+            0%, 100% { 
+                color: #2ecc71;
+                text-shadow: 0 0 5px rgba(46, 204, 113, 0.3);
+            }
+            50% { 
+                color: #27ae60;
+                text-shadow: 0 0 15px rgba(46, 204, 113, 0.6);
+            }
+        }
+        
+        .input-dots.recording {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { 
+                transform: scale(1); 
+                box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7);
+            }
+            50% { 
+                transform: scale(1.1); 
+                box-shadow: 0 0 0 10px rgba(255, 71, 87, 0);
+            }
+        }
+        
+        .response-area {
+            position: relative;
+            width: 750px;
+            max-height: 600px;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(20px);
+            border: 2px solid white;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            color: white;
+            overflow-y: auto;
+            display: none;
+            margin-top: 10px;
+        }
+        
+        .response-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            background: rgba(255,255,255,0.1);
+            cursor: move;
+            user-select: none;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .response-header > div > span {
+            pointer-events: auto;
+            cursor: pointer;
+        }
+        
+        #responseText {
+            padding: 20px;
+            max-height: 540px;
+            overflow-y: auto;
+        }
+        
+        .response-area.active {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .response-item {
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-left: 3px solid white;
+        }
+        
+        .response-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .response-details {
+            font-size: 13px;
+            color: rgba(255,255,255,0.8);
+        }
+        /* === Unified Notification Popup === */
+        .notif-popup {
+            position: fixed;
+            top: 20px;
+            right: 30px;
+            width: 340px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: rgba(10, 10, 10, 0.97);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            padding: 16px;
+            color: white;
+            z-index: 99999;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+            animation: popIn 0.35s ease;
+            border-left: 4px solid #ffc107;
+            box-sizing: border-box;
+            pointer-events: auto;
+        }
+        .notif-popup[data-type="activity_reminder"] { border-left-color: #ffc107; }
+        .notif-popup[data-type="new_lead"] { border-left-color: #4fc3f7; }
+        .notif-popup[data-type="lead_assigned"] { border-left-color: #66bb6a; }
+        .notif-popup[data-type="lead_assignment_confirmed"] { border-left-color: #81c784; }
+        .notif-popup[data-type="lead_reassigned"] { border-left-color: #ff9800; }
+        .notif-popup[data-type="new_message"] { border-left-color: #25D366; }
+        .notif-popup[data-type="new_email"] { border-left-color: #ea4335; }
+        .notif-popup[data-type="daily_summary"] { border-left-color: #9c27b0; }
+        .notif-popup .np-head {
+            display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;
+        }
+        .notif-popup .np-title {
+            font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 6px;
+        }
+        .notif-popup .np-close {
+            cursor: pointer; opacity: 0.5; font-size: 13px; padding: 2px 6px;
+        }
+        .notif-popup .np-close:hover { opacity: 1; }
+        .notif-popup .np-body {
+            font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.5; margin-bottom: 8px;
+        }
+        .notif-popup .np-meta {
+            font-size: 11px; color: rgba(255,255,255,0.45); margin-bottom: 8px;
+        }
+        .notif-popup .np-reply-area {
+            display: none; margin-top: 8px;
+        }
+        .notif-popup .np-reply-area.open { display: block; }
+        .notif-popup .np-reply-input {
+            width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px; color: white; padding: 8px 10px; font-size: 12px; resize: vertical;
+            outline: none; font-family: inherit; min-height: 50px; max-height: 120px;
+        }
+        .notif-popup .np-reply-input::placeholder { color: rgba(255,255,255,0.35); }
+        .notif-popup .np-actions {
+            display: flex; gap: 6px; margin-top: 8px;
+        }
+        .notif-popup .np-btn {
+            padding: 5px 12px; border-radius: 6px; border: none; font-size: 11px;
+            cursor: pointer; font-weight: 600;
+        }
+        .notif-popup .np-btn-reply {
+            background: rgba(255,255,255,0.1); color: white;
+        }
+        .notif-popup .np-btn-reply:hover { background: rgba(255,255,255,0.2); }
+        .notif-popup .np-btn-send {
+            background: #25D366; color: white;
+        }
+        .notif-popup .np-btn-send:hover { background: #1da851; }
+        .notif-popup .np-btn-send[data-type="email"] { background: #ea4335; }
+        .notif-popup .np-btn-send[data-type="email"]:hover { background: #c5221f; }
+        .notif-popup .np-sending { opacity: 0.5; pointer-events: none; }
+        .notif-popup .np-head { cursor: move; }
+        @keyframes popIn {
+            from { opacity: 0; transform: translateX(40px) scale(0.95); }
+            to { opacity: 1; transform: translateX(0) scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="floating-assistant" id="assistant">
+        <div class="input-container collapsed" id="inputContainer" data-tauri-drag-region>
+            <div class="input-dots" id="inputDots" data-tauri-drag-region><span>●</span><span>●</span></div>
+            <textarea class="text-input hidden" id="textInput" placeholder="Type or speak your message..." rows="1"></textarea>
+            <button class="mic-button hidden" id="micBtn">mic</button>
+            <button class="mic-button hidden" id="stopVoiceBtn" title="Stop Voice" style="background:#e74c3c;display:none;">■ stop</button>
+            <button class="mic-button hidden" id="voiceModeBtn" title="Voice Mode — Coming Soon" style="opacity:0.45;cursor:not-allowed;position:relative;">
+                🎙 <span style="font-size:9px;background:#f39c12;color:#000;border-radius:3px;padding:1px 4px;margin-left:2px;font-weight:700;">SOON</span>
+            </button>
+            <button class="mic-button hidden" id="logoutBtnSimple" title="Logout">⏻</button>
+        </div>
+        
+        <div class="response-area" id="responseArea">
+            <div class="response-header" id="responseHeader" data-tauri-drag-region>
+                <span style="font-weight: bold;">Results</span>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="voiceSelect" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; max-width: 200px;" title="Select Voice">
+                        <option value="en_US-lessac-medium">Lessac (US English)</option>
+                    </select>
+                    <span style="opacity:0.4;font-size:12px;cursor:not-allowed;" id="voiceToggle" title="Voice Mode — Coming Soon">🎙 <span style="font-size:9px;background:#f39c12;color:#000;border-radius:3px;padding:1px 3px;font-weight:700;">SOON</span></span>
+                    <span style="cursor: pointer; opacity: 0.7; font-size: 12px;" id="logoutBtn" title="Logout">logout</span>
+                    <span style="cursor: pointer; opacity: 0.7;" id="closeResponse">✕</span>
+                </div>
+            </div>
+            <div id="responseText"></div>
+        </div>
+    </div>
+
+    <div id="reminderContainer"></div>
+
+    <script>
+        let isExpanded = false;
+        let isRecording = false;
+        let isVoiceMode = false;
+        let isConversationalMode = false;
+        let silenceTimer = null;
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        let silenceThreshold = -50; // dB threshold for silence detection
+        let silenceStartTime = null;
+        let selectedVoice = 'en_US-lessac-medium'; // Default to Piper voice
+        let availableVoices = [];
+        let voiceModeEnabled = false; // Start in text mode
+        let continuousVoiceMode = false; // Continuous conversation mode
+        let currentVoice = 'alloy'; // Default voice
+        
+        // Wake word settings
+        const wakeWords = ['hey neen', 'hi neen', 'neen', 'hey assistant', 'hello neen'];
+        let isListeningForWakeWord = false;
+        
+        const assistant = document.getElementById('assistant');
+        const mainBtn = document.getElementById('mainBtn');
+        const inputContainer = document.getElementById('inputContainer');
+        const textInput = document.getElementById('textInput');
+        const micBtn = document.getElementById('micBtn');
+        const voiceModeBtn = document.getElementById('voiceModeBtn');
+        const responseArea = document.getElementById('responseArea');
+        const responseHeader = document.getElementById('responseHeader');
+        const closeResponse = document.getElementById('closeResponse');
+        const voiceToggle = document.getElementById('voiceToggle');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const logoutBtnSimple = document.getElementById('logoutBtnSimple');
+        const inputDots = document.getElementById('inputDots');
+        const responseText = document.getElementById('responseText');
+        
+        console.log('Elements loaded:', {
+            inputDots: inputDots,
+            inputContainer: inputContainer,
+            textInput: textInput,
+            micBtn: micBtn,
+            voiceModeBtn: voiceModeBtn,
+            logoutBtnSimple: logoutBtnSimple,
+            logoutBtn: logoutBtn,
+            isExpanded: isExpanded
+        });
+        
+        console.log('Setting up event listeners...');
+        
+        // Play greeting with proper Tauri waiting and fallback to browser TTS
+        async function playGreeting(message) {
+            console.log('=== PLAYING GREETING ===');
+            console.log('Message:', message);
+            console.log('Selected voice:', selectedVoice);
+            
+            // Wait for Tauri to be available
+            let attempts = 0;
+            while (!window.__TAURI__ && attempts < 100) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+            
+            if (!window.__TAURI__) {
+                console.error('Tauri not available for greeting');
+                return;
+            }
+            
+            console.log('Tauri available, calling TTS...');
+            
+            try {
+                // Use the correct Tauri invoke path
+                let invoke;
+                if (window.__TAURI__.core && window.__TAURI__.core.invoke) {
+                    invoke = window.__TAURI__.core.invoke;
+                } else if (window.__TAURI__.invoke) {
+                    invoke = window.__TAURI__.invoke;
+                } else {
+                    console.error('No invoke function found in Tauri');
+                    throw new Error('Tauri invoke not available');
+                }
+                
+                console.log('Using invoke function:', !!invoke);
+                
+                const audioBase64 = await invoke('text_to_speech', { 
+                    text: message,
+                    voice: selectedVoice 
+                });
+                
+                console.log('TTS successful, got audio data length:', audioBase64.length);
+                
+                const audio = new Audio(`data:audio/wav;base64,${audioBase64}`);
+                audio.onloadeddata = () => console.log('Audio loaded successfully');
+                audio.onerror = (e) => console.error('Audio playback error:', e);
+                audio.onended = () => console.log('Audio playback finished');
+                
+                await audio.play();
+                console.log('Audio play() called successfully');
+            } catch (error) {
+                console.error('TTS ERROR:', error);
+                console.log('Falling back to browser speech synthesis...');
+                
+                // Fallback to browser's built-in speech synthesis
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(message);
+                    utterance.rate = 0.9;
+                    utterance.pitch = 1.0;
+                    utterance.volume = 1.0;
+                    
+                    // Try to find a good voice
+                    const voices = speechSynthesis.getVoices();
+                    const preferredVoice = voices.find(voice => 
+                        voice.lang.startsWith('en') && voice.name.includes('Female')
+                    ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0];
+                    
+                    if (preferredVoice) {
+                        utterance.voice = preferredVoice;
+                    }
+                    
+                    speechSynthesis.speak(utterance);
+                    console.log('Browser TTS fallback used');
+                } else {
+                    console.error('No TTS available');
+                }
+            }
+        }
+        
+        // Simple TTS test function
+        window.testTTS = async function() {
+            console.log('=== TESTING TTS ===');
+            try {
+                if (!window.__TAURI__) {
+                    console.error('Tauri not available');
+                    return;
+                }
+                
+                // Use the correct Tauri invoke path
+                let invoke;
+                if (window.__TAURI__.invoke) {
+                    invoke = window.__TAURI__.invoke;
+                } else if (window.__TAURI__.core && window.__TAURI__.core.invoke) {
+                    invoke = window.__TAURI__.core.invoke;
+                } else {
+                    console.error('No invoke function found in Tauri');
+                    return;
+                }
+                
+                console.log('Calling TTS with test message...');
+                const result = await invoke('text_to_speech', { 
+                    text: "Hello, this is a test",
+                    voice: selectedVoice 
+                });
+                
+                console.log('TTS result:', result);
+                console.log('Result type:', typeof result);
+                console.log('Result length:', result ? result.length : 'null');
+                
+                if (result) {
+                    const audio = new Audio(`data:audio/wav;base64,${result}`);
+                    audio.play();
+                    console.log('Audio play attempted');
+                } else {
+                    console.error('No audio data received');
+                }
+            } catch (error) {
+                console.error('TTS test failed:', error);
+            }
+        };
+        
+        // Voice mode toggle (in response header) — Coming Soon, disabled
+        voiceToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Voice mode coming soon — no action
+        });
+        
+        // Voice mode button — Coming Soon, no action
+        if (voiceModeBtn) {
+            voiceModeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Coming soon — no action
+            });
+        }
+
+        // Stop voice button — always kills recording/conversational mode
+        const stopVoiceBtn = document.getElementById('stopVoiceBtn');
+        if (stopVoiceBtn) {
+            stopVoiceBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                voiceModeEnabled = false;
+                isConversationalMode = false;
+                if (isRecording) stopRecording();
+                stopConversationalMode();
+                stopVoiceBtn.style.display = 'none';
+                if (voiceModeBtn) voiceModeBtn.classList.remove('voice-active');
+            });
+        }
+        
+        // Logout handler for both buttons
+        const handleLogout = async (e) => {
+            console.log('=== LOGOUT HANDLER CALLED ===');
+            console.log('Event:', e);
+            console.log('Target:', e.target);
+            e.stopPropagation();
+            e.preventDefault();
+            
+            // Try different ways to access Tauri
+            let tauriInvoke = null;
+            if (window.__TAURI__ && window.__TAURI__.invoke) {
+                tauriInvoke = window.__TAURI__.invoke;
+                console.log('Using window.__TAURI__.invoke');
+            } else if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+                tauriInvoke = window.__TAURI__.core.invoke;
+                console.log('Using window.__TAURI__.core.invoke');
+            } else if (window.__TAURI__ && window.__TAURI__.tauri && window.__TAURI__.tauri.invoke) {
+                tauriInvoke = window.__TAURI__.tauri.invoke;
+                console.log('Using window.__TAURI__.tauri.invoke');
+            } else if (window.__TAURI_INVOKE__) {
+                tauriInvoke = window.__TAURI_INVOKE__;
+                console.log('Using window.__TAURI_INVOKE__');
+            } else if (window.tauri && window.tauri.invoke) {
+                tauriInvoke = window.tauri.invoke;
+                console.log('Using window.tauri.invoke');
+            }
+            
+            if (!tauriInvoke && window.__TAURI__) {
+                console.log('__TAURI__ object structure:', window.__TAURI__);
+                console.log('__TAURI__ keys:', Object.keys(window.__TAURI__));
+            }
+            
+            if (!tauriInvoke) {
+                console.error('No Tauri invoke function available');
+                console.log('Available on window:', Object.keys(window).filter(k => k.includes('TAURI') || k.includes('tauri')));
+                return;
+            }
+            
+            console.log('Showing confirmation dialog...');
+            // Temporarily remove confirmation for testing
+            // if (confirm('Are you sure you want to logout?')) {
+            if (true) {
+                console.log('User confirmed logout');
+                try {
+                    console.log('Step 1: Clearing tokens...');
+                    await tauriInvoke('logout_user');
+                    console.log('Step 1 SUCCESS: Tokens cleared');
+                    
+                    console.log('Step 2: Restarting to login...');
+                    await tauriInvoke('restart_to_login');
+                    console.log('Step 2 SUCCESS: Redirected to login');
+                } catch (error) {
+                    console.error('LOGOUT ERROR:', error);
+                }
+            } else {
+                console.log('User cancelled logout');
+            }
+            console.log('=== LOGOUT HANDLER END ===');
+        };
+        
+        console.log('=== LOGOUT BUTTON SETUP ===');
+        console.log('Response logout button found:', !!logoutBtn);
+        console.log('Simple logout button found:', !!logoutBtnSimple);
+        
+        if (logoutBtn) {
+            console.log('Attaching listeners to response logout button...');
+            logoutBtn.addEventListener('click', handleLogout);
+            console.log('Response logout button listeners attached');
+        } else {
+            console.error('Response logout button NOT FOUND!');
+        }
+        
+        if (logoutBtnSimple) {
+            console.log('Attaching listeners to simple logout button...');
+            logoutBtnSimple.addEventListener('click', handleLogout);
+            console.log('Simple logout button listeners attached');
+        } else {
+            console.error('Simple logout button NOT FOUND!');
+        }
+        
+        // Click dots to expand/collapse
+        // Wait for DOM to be fully loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupEventListeners);
+        } else {
+            setupEventListeners();
+        }
+        
+        function setupEventListeners() {
+            console.log('=== SETTING UP EVENT LISTENERS ===');
+            const dotsElement = document.getElementById('inputDots');
+            console.log('inputDots element found:', !!dotsElement);
+            
+            // Note: Dots click handling is now done in the main mousedown/mouseup events
+            // to properly distinguish between clicks and drags
+        }
+        
+        // Make toggleExpansion globally accessible
+        window.toggleExpansion = function() {
+            console.log('toggleExpansion called, isExpanded:', isExpanded);
+            isExpanded = !isExpanded;
+            
+            if (isExpanded) {
+                console.log('Expanding...');
+                stopWakeWordListening(); // Stop background listening
+                inputContainer.classList.remove('collapsed');
+                inputContainer.classList.add('expanded');
+                textInput.classList.remove('hidden');
+                micBtn.classList.remove('hidden');
+                if (voiceModeBtn) voiceModeBtn.classList.remove('hidden');
+                if (logoutBtnSimple) logoutBtnSimple.classList.remove('hidden');
+                setTimeout(() => {
+                    textInput.focus();
+                    autoResize(); // Trigger resize after expansion
+                }, 300);
+                resizeWindow();
+            } else {
+                console.log('Collapsing...');
+                inputContainer.classList.remove('expanded');
+                inputContainer.classList.add('collapsed');
+                textInput.classList.add('hidden');
+                micBtn.classList.add('hidden');
+                if (voiceModeBtn) voiceModeBtn.classList.add('hidden');
+                if (logoutBtnSimple) logoutBtnSimple.classList.add('hidden');
+                responseArea.classList.remove('active');
+                stopRecording();
+                resizeWindow();
+                // Wake word listening disabled temporarily
+                // setTimeout(() => { startWakeWordListening(); }, 1000);
+            }
+        };
+        
+        // Close response area
+        closeResponse.addEventListener('click', (e) => {
+            e.stopPropagation();
+            responseArea.classList.remove('active');
+            resizeWindow();
+        });
+        
+        console.log('Event listeners attached successfully');
+        
+        // Make entire assistant draggable via data-tauri-drag-region (set in HTML)
+        // Dots: click to expand, drag to move window
+        let _dotStart = null;
+        let _dragTimer = null;
+        inputDots.addEventListener('mousedown', (e) => {
+            _dotStart = { x: e.clientX, y: e.clientY };
+            // Start drag after small movement
+            _dragTimer = setTimeout(async () => {
+                try {
+                    const win = window.__TAURI__?.window?.getCurrent?.();
+                    if (win) await win.startDragging();
+                } catch (err) { console.error('Drag error:', err); }
+                _dotStart = null;
+            }, 150);
+        });
+        inputDots.addEventListener('mouseup', (e) => {
+            clearTimeout(_dragTimer);
+            if (!_dotStart) return;
+            const moved = Math.abs(e.clientX - _dotStart.x) + Math.abs(e.clientY - _dotStart.y);
+            _dotStart = null;
+            if (moved < 6) window.toggleExpansion();
+        });
+        inputDots.addEventListener('mousemove', async (e) => {
+            if (!_dotStart) return;
+            const moved = Math.abs(e.clientX - _dotStart.x) + Math.abs(e.clientY - _dotStart.y);
+            if (moved > 4) {
+                clearTimeout(_dragTimer);
+                _dotStart = null;
+                try {
+                    const win = window.__TAURI__?.window?.getCurrent?.();
+                    if (win) await win.startDragging();
+                } catch (err) { console.error('Drag error:', err); }
+            }
+        });
+        
+        async function resizeWindow() {
+            if (window.__TAURI__ && window.__TAURI__.window && window.__TAURI__.window.getCurrent) {
+                try {
+                    const currentWindow = window.__TAURI__.window.getCurrent();
+                    
+                    let width, height;
+                    if (isExpanded && responseArea.classList.contains('active')) {
+                        width = 820;
+                        // Auto-stretch: measure actual content height
+                        const contentH = responseArea.scrollHeight + 100;
+                        height = Math.min(Math.max(contentH, 300), 800);
+                    } else if (isExpanded) {
+                        width = 560;
+                        height = 80;
+                    } else {
+                        width = 60;
+                        height = 60;
+                    }
+                    
+                    await currentWindow.setSize({
+                        width: width,
+                        height: height
+                    });
+                    // Don't reposition — let user drag wherever they want
+                } catch (error) {
+                    console.error('Failed to resize window:', error);
+                }
+            }
+        }
+        
+        // Mic button
+        micBtn.addEventListener('click', toggleRecording);
+        
+        const DEEPGRAM_API_KEY = '2cb52ea0ca577ec65d7b6b6770ae4677daf34685';
+        let mediaRecorder = null;
+        let deepgramSocket = null;
+        let fullTranscript = '';
+        
+        function toggleRecording() {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+        
+        async function startRecording() {
+            // Show stop button whenever recording starts
+            const _stopBtn = document.getElementById('stopVoiceBtn');
+            if (_stopBtn) _stopBtn.style.display = 'inline-flex';
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: 16000
+                    }
+                });
+                
+                // Connect to Deepgram WebSocket with Nova 3 model for best accuracy
+                const deepgramUrl = 'wss://api.deepgram.com/v1/listen?' + new URLSearchParams({
+                    encoding: 'linear16',
+                    sample_rate: '16000',
+                    channels: '1',
+                    model: 'nova-3',
+                    language: 'en',
+                    interim_results: 'true',
+                    punctuate: 'true',
+                    smart_format: 'true',
+                    endpointing: '500',
+                    vad_events: 'true',
+                    utterance_end_ms: '2000'
+                });
+                
+                deepgramSocket = new WebSocket(deepgramUrl, ['token', DEEPGRAM_API_KEY]);
+                
+                deepgramSocket.onopen = () => {
+                    console.log('Deepgram connected');
+                    isRecording = true;
+                    fullTranscript = '';
+                    micBtn.classList.add('recording');
+                    micBtn.textContent = 'stop';
+                    textInput.placeholder = 'Listening...';
+                    textInput.value = '';
+                    
+                    // Create AudioContext for proper audio processing
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                    const source = audioContext.createMediaStreamSource(stream);
+                    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+                    
+                    // Set up analyser for silence detection in voice mode
+                    if (voiceModeEnabled) {
+                        analyser = audioContext.createAnalyser();
+                        analyser.fftSize = 256;
+                        source.connect(analyser);
+                        console.log('Analyser set up for silence detection');
+                    }
+                    
+                    processor.onaudioprocess = (e) => {
+                        if (deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
+                            const inputData = e.inputBuffer.getChannelData(0);
+                            // Convert float32 to int16
+                            const int16Data = new Int16Array(inputData.length);
+                            for (let i = 0; i < inputData.length; i++) {
+                                int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                            }
+                            deepgramSocket.send(int16Data.buffer);
+                        }
+                    };
+                    
+                    source.connect(processor);
+                    processor.connect(audioContext.destination);
+                    
+                    // Store for cleanup
+                    window.audioContext = audioContext;
+                    window.processor = processor;
+                    window.micStream = stream;
+                };
+                
+                deepgramSocket.onmessage = (message) => {
+                    try {
+                        const data = JSON.parse(message.data);
+                        const transcript = data.channel?.alternatives?.[0]?.transcript;
+                        const isFinal = data.is_final;
+                        
+                        if (transcript && transcript.trim()) {
+                            // Check for wake words
+                            const lowerTranscript = transcript.toLowerCase();
+                            const containsWakeWord = wakeWords.some(word => lowerTranscript.includes(word));
+                            
+                            if (containsWakeWord && !isExpanded) {
+                                console.log('Wake word detected:', transcript);
+                                // Expand the interface
+                                window.toggleExpansion();
+                                // Play wake acknowledgment
+                                speakText("Yes, I'm listening. How can I help you?");
+                                // Clear the wake word from transcript
+                                const cleanTranscript = transcript.replace(new RegExp(wakeWords.join('|'), 'gi'), '').trim();
+                                if (cleanTranscript) {
+                                    fullTranscript = cleanTranscript;
+                                    textInput.value = fullTranscript;
+                                } else {
+                                    fullTranscript = '';
+                                    textInput.value = '';
+                                }
+                                autoResize();
+                                return;
+                            }
+                            
+                            if (isFinal) {
+                                // Append final transcript
+                                fullTranscript += (fullTranscript ? ' ' : '') + transcript;
+                                textInput.value = fullTranscript;
+                                autoResize(); // Trigger resize after updating value
+                                console.log('Final transcript:', fullTranscript);
+                            } else {
+                                // Show interim result
+                                textInput.value = fullTranscript + (fullTranscript ? ' ' : '') + transcript;
+                                autoResize(); // Trigger resize for interim results too
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error parsing Deepgram response:', e);
+                    }
+                };
+                
+                deepgramSocket.onerror = (error) => {
+                    console.error('Deepgram error:', error);
+                    stopRecording();
+                };
+                
+                deepgramSocket.onclose = () => {
+                    console.log('Deepgram disconnected');
+                };
+                
+            } catch (error) {
+                console.error('Microphone access error:', error);
+                textInput.placeholder = 'Microphone access denied';
+                stopRecording();
+            }
+        }
+        
+        function stopRecording() {
+            isRecording = false;
+            // Hide stop button when recording stops
+            const _stopBtn = document.getElementById('stopVoiceBtn');
+            if (_stopBtn) _stopBtn.style.display = 'none';
+            micBtn.classList.remove('recording');
+            micBtn.textContent = 'mic';
+            textInput.placeholder = 'Type or speak your message...';
+            
+            // Clean up AudioContext
+            if (window.processor) {
+                window.processor.disconnect();
+                window.processor = null;
+            }
+            if (window.audioContext) {
+                window.audioContext.close();
+                window.audioContext = null;
+            }
+            analyser = null;
+            
+            // Stop media stream
+            if (window.micStream) {
+                window.micStream.getTracks().forEach(track => track.stop());
+                window.micStream = null;
+            }
+            
+            if (deepgramSocket && deepgramSocket.readyState === WebSocket.OPEN) {
+                deepgramSocket.close();
+                deepgramSocket = null;
+            }
+            
+            // Process message if there's text (only for manual stop, not voice-mode auto-send)
+            if (textInput.value.trim() && !voiceModeEnabled) {
+                setTimeout(() => processMessage(), 500);
+            } else if (!textInput.value.trim()) {
+                textInput.style.height = '20px';
+                setTimeout(resizeWindow, 50);
+            }
+        }
+        
+        // Auto-resize textarea only when content changes
+        function autoResize() {
+            const textLength = textInput.value.length;
+            const lineCount = textInput.value.split('\n').length;
+            
+            // Only resize if there's substantial content or multiple lines
+            if (textLength > 40 || lineCount > 1) {
+                textInput.style.height = 'auto';
+                const scrollHeight = textInput.scrollHeight;
+                const maxHeight = 240; // 10 lines max
+                
+                const newHeight = Math.min(scrollHeight, maxHeight);
+                textInput.style.height = newHeight + 'px';
+                textInput.style.overflowY = scrollHeight > maxHeight ? 'auto' : 'hidden';
+                setTimeout(resizeWindow, 50);
+            } else {
+                // Keep single line height for short text
+                textInput.style.height = '20px';
+                textInput.style.overflowY = 'hidden';
+            }
+        }
+        
+        textInput.addEventListener('input', autoResize);
+        
+        // Don't auto-resize on initial load - keep it single line
+        
+        // Enter key to send (Shift+Enter for new line)
+        textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                processMessage();
+            }
+        });
+        
+        async function processMessage() {
+            const message = textInput.value.trim();
+            if (!message) return;
+            
+            // Add dance animation to dots and pulse to container
+            inputDots.classList.add('processing');
+            inputContainer.classList.add('processing');
+            textInput.placeholder = '● Processing...';
+            textInput.disabled = true;
+            textInput.value = '';
+            
+            // Reset textarea height to single line
+            textInput.style.height = '20px';
+            setTimeout(resizeWindow, 50);
+            
+            try {
+                const invoke = getInvoke();
+                if (!invoke) throw new Error('Tauri API not available');
+                
+                const response = await invoke('send_chat_message', { message });
+                
+                // Remove animations
+                inputDots.classList.remove('processing');
+                inputContainer.classList.remove('processing');
+                textInput.placeholder = 'Type or speak your message...';
+                textInput.disabled = false;
+                
+                // Show response
+                responseArea.classList.add('active');
+                const aiMessage = formatResponse(response);
+                
+                // In voice mode: speak response and restart listening
+                if (aiMessage && voiceModeEnabled) {
+                    autoReadResponse(aiMessage);
+                }
+                
+                // Resize window after response
+                setTimeout(resizeWindow, 100);
+                
+            } catch (error) {
+                console.error('Processing error:', error);
+                inputDots.classList.remove('processing');
+                inputContainer.classList.remove('processing');
+                textInput.placeholder = 'Type or speak your message...';
+                textInput.disabled = false;
+                responseArea.classList.add('active');
+                
+                // Check if it's a session expiry error (403)
+                if (error.message && (error.message.includes('403') || error.message.includes('Tunnel token expired'))) {
+                    responseText.innerHTML = `
+                        <div style="padding: 15px; color: #ff4757; text-align: center;">
+                            <div style="margin-bottom: 15px;">Session expired. Please logout and login again.</div>
+                            <button onclick="forceLogout()" style="background: #ff4757; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px;">
+                                Logout Now
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    responseText.innerHTML = '<div style="padding: 15px; color: #ff4757;">Failed to process request</div>';
+                }
+            }
+        }
+        
+        function formatResponse(response) {
+            console.log('Raw response:', response);
+            
+            // If response is not a string, convert it
+            if (typeof response !== 'string') {
+                response = String(response);
+            }
+            
+            // Check if it's JSON or plain text
+            let jsonData;
+            try {
+                jsonData = JSON.parse(response);
+                console.log('Parsed JSON:', jsonData);
+            } catch (e) {
+                console.log('Not JSON, treating as plain text:', response);
+                // It's plain text, display it directly
+                responseText.innerHTML = `<div style="padding: 20px; background: rgba(255,255,255,0.08); border-radius: 12px; color: rgba(255,255,255,0.95); font-size: 15px; line-height: 1.6;">${response}</div>`;
+                return response;
+            }
+            
+            // Extract message from multiple possible paths
+            let aiMessage = jsonData.message || 
+                           jsonData.response || 
+                           (jsonData.assistant_message && jsonData.assistant_message.content) || 
+                           '';
+            
+            // Check for data in multiple possible paths
+            let leadsData = null;
+            
+            // Path 1: structured_data.data
+            if (jsonData.structured_data && jsonData.structured_data.data) {
+                leadsData = jsonData.structured_data.data;
+            }
+            // Path 2: action_result.data
+            else if (jsonData.action_result && jsonData.action_result.data) {
+                leadsData = jsonData.action_result.data;
+            }
+            // Path 3: assistant_message.action.result.data
+            else if (jsonData.assistant_message && 
+                     jsonData.assistant_message.action && 
+                     jsonData.assistant_message.action.result && 
+                     jsonData.assistant_message.action.result.data) {
+                leadsData = jsonData.assistant_message.action.result.data;
+            }
+            // Path 4: data directly
+            else if (jsonData.data) {
+                if (Array.isArray(jsonData.data)) {
+                    leadsData = jsonData.data;
+                } else if (typeof jsonData.data === 'object') {
+                    // Single object - wrap in array
+                    leadsData = [jsonData.data];
+                }
+            }
+            
+            // Render response
+            let html = '';
+            
+            // Show AI message if exists
+            if (aiMessage) {
+                html = `<div style="padding: 20px; background: rgba(255,255,255,0.08); border-radius: 12px; color: rgba(255,255,255,0.95); font-size: 15px; line-height: 1.6;">${aiMessage}</div>`;
+            }
+            
+            // Show data if exists
+            if (leadsData && Array.isArray(leadsData) && leadsData.length > 0) {
+                responseText.innerHTML = html;
+                // Check if it's activities or leads based on data structure
+                if (leadsData[0].subject || leadsData[0].type_display) {
+                    formatActivities(leadsData);
+                } else {
+                    formatLeads(leadsData);
+                }
+                return aiMessage;
+            } else if (aiMessage) {
+                responseText.innerHTML = html;
+                return aiMessage;
+            } else {
+                responseText.innerHTML = `<div style="padding: 20px; color: rgba(255,255,255,0.7);">No response received</div>`;
+                return null;
+            }
+        }
+        
+        // Text-to-Speech function
+        async function speakText(text) {
+            if (!text || !voiceModeEnabled) return;
+            
+            console.log('=== SPEAK TEXT ===');
+            console.log('Text:', text);
+            console.log('Voice mode enabled:', voiceModeEnabled);
+            console.log('Selected voice:', selectedVoice);
+            
+            try {
+                // Wait for Tauri to be available
+                let attempts = 0;
+                while (!window.__TAURI__ && attempts < 50) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
+                }
+                
+                if (!window.__TAURI__) {
+                    console.error('Tauri not available for TTS');
+                    return;
+                }
+                
+                // Use the correct Tauri invoke path
+                let invoke;
+                if (window.__TAURI__.core && window.__TAURI__.core.invoke) {
+                    invoke = window.__TAURI__.core.invoke;
+                } else if (window.__TAURI__.invoke) {
+                    invoke = window.__TAURI__.invoke;
+                } else {
+                    console.error('No invoke function found in Tauri');
+                    throw new Error('Tauri invoke not available');
+                }
+                
+                console.log('Calling TTS API...');
+                const audioBase64 = await invoke('text_to_speech', { 
+                    text: text,
+                    voice: selectedVoice 
+                });
+                
+                console.log('TTS successful, got audio data length:', audioBase64.length);
+                
+                const audio = new Audio(`data:audio/wav;base64,${audioBase64}`);
+                audio.onloadeddata = () => console.log('Audio loaded successfully');
+                audio.onerror = (e) => console.error('Audio playback error:', e);
+                audio.onended = () => console.log('Audio playback finished');
+                
+                await audio.play();
+                console.log('Audio play() called successfully');
+            } catch (error) {
+                console.error('TTS ERROR:', error);
+                console.log('Falling back to browser speech synthesis...');
+                
+                // Fallback to browser's built-in speech synthesis
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.rate = 0.9;
+                    utterance.pitch = 1.0;
+                    utterance.volume = 1.0;
+                    
+                    // Try to find a good voice
+                    const voices = speechSynthesis.getVoices();
+                    const preferredVoice = voices.find(voice => 
+                        voice.lang.startsWith('en') && voice.name.includes('Female')
+                    ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0];
+                    
+                    if (preferredVoice) {
+                        utterance.voice = preferredVoice;
+                    }
+                    
+                    speechSynthesis.speak(utterance);
+                    console.log('Browser TTS fallback used');
+                } else {
+                    console.error('No TTS available');
+                }
+            }
+        }
+        
+        function formatLeads(leads) {
+            if (!leads || !Array.isArray(leads) || leads.length === 0) {
+                responseText.innerHTML += '<div style="color: rgba(255,255,255,0.7);">No leads found</div>';
+                return;
+            }
+            
+            let html = responseText.innerHTML + `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-top: 15px;">`;
+            
+            leads.slice(0, 20).forEach((lead) => {
+                const statusColor = getStatusColor(lead.status);
+                const createdDate = new Date(lead.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                
+                html += `
+                    <div style="background: rgba(255,255,255,0.08); border-radius: 12px; padding: 16px; transition: all 0.2s;" 
+                         onmouseover="this.style.background='rgba(255,255,255,0.15)'" 
+                         onmouseout="this.style.background='rgba(255,255,255,0.08)'">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div style="font-weight: 600; font-size: 15px; color: white;">${lead.name || 'Unnamed Lead'}</div>
+                            <span style="background: ${statusColor}; color: white; padding: 4px 10px; border-radius: 14px; font-size: 10px; font-weight: 600; text-transform: uppercase;">${lead.status}</span>
+                        </div>
+                        <div style="font-size: 13px; color: rgba(255,255,255,0.75); line-height: 1.6;">
+                            ${lead.email ? `<div style="margin-bottom: 6px;"><a href="mailto:${lead.email}" style="color: #4fc3f7; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">📧 ${lead.email}</a></div>` : ''}
+                            ${lead.phone ? `<div style="margin-bottom: 6px;"><a href="tel:${lead.phone}" style="color: #66bb6a; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">📞 ${lead.phone}</a></div>` : ''}
+                            ${lead.company ? `<div style="margin-bottom: 6px;">🏢 ${lead.company}</div>` : ''}
+                            <div style="margin-top: 8px; color: rgba(255,255,255,0.5); font-size: 12px;">📅 ${createdDate}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+            
+            if (leads.length > 20) {
+                html += `<div style="text-align: center; margin-top: 20px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; color: rgba(255,255,255,0.7); font-size: 13px;">Showing 20 of ${leads.length} leads</div>`;
+            }
+            
+            responseText.innerHTML = html;
+        }
+        
+        function getStatusColor(status) {
+            switch (status?.toLowerCase()) {
+                case 'new': return '#007bff';
+                case 'qualified': return '#ffc107';
+                case 'converted': return '#28a745';
+                default: return '#6c757d';
+            }
+        }
+        
+        // Conversational mode functions
+        async function startConversationalMode() {
+            console.log('Starting conversational mode...');
+            
+            const greetings = [
+                "Conversational mode activated. I'll listen continuously and respond automatically.",
+                "Hello! I'm now in conversational mode. Just speak naturally and I'll respond.",
+                "Conversational mode is on. Speak freely and I'll handle the conversation flow."
+            ];
+            const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+            await playGreeting(greeting);
+            
+            // Start recording after greeting — analyser is set up inside startRecording when voiceModeEnabled
+            setTimeout(() => {
+                if (voiceModeEnabled && isExpanded) {
+                    startRecording();
+                    setTimeout(() => startSilenceDetection(), 1000);
+                }
+            }, 2000);
+        }
+        
+        function stopConversationalMode() {
+            console.log('Stopping conversational mode...');
+            
+            if (isRecording) {
+                stopRecording();
+            }
+            
+            silenceStartTime = null;
+        }
+        
+        // Silence detection using the recording analyser
+        function startSilenceDetection() {
+            console.log('=== STARTING SILENCE DETECTION ===');
+            console.log('voiceModeEnabled:', voiceModeEnabled);
+            console.log('analyser exists:', !!analyser);
+            
+            if (!voiceModeEnabled || !analyser) {
+                console.log('Cannot start silence detection - missing requirements');
+                return;
+            }
+            
+            silenceStartTime = null;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            
+            function checkSilence() {
+                if (!voiceModeEnabled || !isRecording) {
+                    console.log('Stopping silence detection');
+                    return;
+                }
+                
+                analyser.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+                const decibels = average > 0 ? 20 * Math.log10(average / 255) : -100;
+                
+                if (decibels < silenceThreshold) {
+                    if (!silenceStartTime) {
+                        silenceStartTime = Date.now();
+                    } else if (Date.now() - silenceStartTime > 2000 && fullTranscript.trim()) {
+                        // 2 seconds of silence with text — auto send
+                        console.log('Silence detected with transcript, auto-sending...');
+                        silenceStartTime = null;
+                        stopRecordingAndSend();
+                        return;
+                    }
+                } else {
+                    silenceStartTime = null;
+                }
+                
+                requestAnimationFrame(checkSilence);
+            }
+            
+            console.log('Starting silence detection loop');
+            checkSilence();
+        }
+        
+        // Stop recording and send the transcript, then speak response and re-listen
+        async function stopRecordingAndSend() {
+            if (!isRecording) return;
+            
+            const transcript = fullTranscript.trim();
+            if (!transcript) {
+                // Nothing to send, restart listening
+                if (voiceModeEnabled) {
+                    setTimeout(() => startRecording(), 500);
+                    setTimeout(() => startSilenceDetection(), 1500);
+                }
+                return;
+            }
+            
+            console.log('Auto-sending transcript:', transcript);
+            textInput.value = transcript;
+            stopRecording(); // stops mic, cleans up audio context
+            processMessage(); // sends to backend, autoReadResponse handles speak + re-listen
+        }
+        
+        // Auto-read response and restart listening after speech finishes
+        async function autoReadResponse(text) {
+            if (!voiceModeEnabled || !text) return;
+            
+            console.log('Auto-reading response...');
+            const cleanText = text.replace(/<[^>]*>/g, '').replace(/\n+/g, ' ').trim();
+            if (!cleanText) return;
+            
+            // Helper to restart listening
+            const restartListening = () => {
+                if (voiceModeEnabled && isExpanded) {
+                    setTimeout(() => {
+                        startRecording();
+                        setTimeout(() => startSilenceDetection(), 1000);
+                    }, 500);
+                }
+            };
+            
+            try {
+                let invoke;
+                if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+                    invoke = window.__TAURI__.core.invoke;
+                } else if (window.__TAURI__ && window.__TAURI__.tauri && window.__TAURI__.tauri.invoke) {
+                    invoke = window.__TAURI__.tauri.invoke;
+                } else if (window.__TAURI__ && window.__TAURI__.invoke) {
+                    invoke = window.__TAURI__.invoke;
+                }
+                
+                if (!invoke) throw new Error('No invoke available');
+                
+                // Race TTS call against a 10s timeout
+                const audioBase64 = await Promise.race([
+                    invoke('text_to_speech', { text: cleanText, voice: selectedVoice }),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('TTS timeout')), 10000))
+                ]);
+                
+                const audio = new Audio(`data:audio/wav;base64,${audioBase64}`);
+                audio.onended = restartListening;
+                audio.onerror = () => { console.error('Audio play error'); restartListening(); };
+                await audio.play();
+            } catch (error) {
+                console.error('Auto-read TTS error:', error);
+                // Fallback to browser TTS
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(cleanText);
+                    utterance.rate = 0.9;
+                    utterance.onend = restartListening;
+                    speechSynthesis.speak(utterance);
+                } else {
+                    restartListening();
+                }
+            }
+        }
+        // Start background wake word listening when collapsed
+        function startWakeWordListening() {
+            if (isListeningForWakeWord || isExpanded) return;
+            
+            console.log('Starting wake word listening...');
+            isListeningForWakeWord = true;
+            
+            // Start recording in background for wake word detection
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+                    const microphone = audioContext.createMediaStreamSource(stream);
+                    
+                    microphone.connect(processor);
+                    processor.connect(audioContext.destination);
+                    
+                    // Connect to Deepgram for wake word detection
+                    const deepgramUrl = 'wss://api.deepgram.com/v1/listen?' + new URLSearchParams({
+                        encoding: 'linear16',
+                        sample_rate: '16000',
+                        channels: '1',
+                        model: 'nova-3',
+                        language: 'en',
+                        interim_results: 'true',
+                        punctuate: 'false',
+                        endpointing: '500'
+                    });
+                    
+                    const wakeWordSocket = new WebSocket(deepgramUrl, ['token', DEEPGRAM_API_KEY]);
+                    
+                    wakeWordSocket.onopen = () => {
+                        console.log('Wake word detection connected');
+                    };
+                    
+                    wakeWordSocket.onmessage = (message) => {
+                        try {
+                            const data = JSON.parse(message.data);
+                            const transcript = data.channel?.alternatives?.[0]?.transcript;
+                            
+                            if (transcript && transcript.trim()) {
+                                const lowerTranscript = transcript.toLowerCase();
+                                const containsWakeWord = wakeWords.some(word => lowerTranscript.includes(word));
+                                
+                                if (containsWakeWord) {
+                                    console.log('Wake word detected in background:', transcript);
+                                    // Stop wake word listening
+                                    stopWakeWordListening();
+                                    // Expand interface
+                                    window.toggleExpansion();
+                                    // Play acknowledgment
+                                    setTimeout(() => {
+                                        speakText("Hello! I'm here. What can I do for you?");
+                                    }, 500);
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Wake word detection error:', e);
+                        }
+                    };
+                    
+                    processor.onaudioprocess = (e) => {
+                        if (wakeWordSocket && wakeWordSocket.readyState === WebSocket.OPEN) {
+                            const inputData = e.inputBuffer.getChannelData(0);
+                            const int16Data = new Int16Array(inputData.length);
+                            for (let i = 0; i < inputData.length; i++) {
+                                int16Data[i] = Math.max(-32768, Math.min(32767, inputData[i] * 32768));
+                            }
+                            wakeWordSocket.send(int16Data.buffer);
+                        }
+                    };
+                    
+                    // Store for cleanup
+                    window.wakeWordContext = audioContext;
+                    window.wakeWordProcessor = processor;
+                    window.wakeWordSocket = wakeWordSocket;
+                    window.wakeWordStream = stream;
+                })
+                .catch(error => {
+                    console.error('Wake word listening error:', error);
+                    isListeningForWakeWord = false;
+                });
+        }
+        
+        function stopWakeWordListening() {
+            console.log('Stopping wake word listening...');
+            isListeningForWakeWord = false;
+            
+            if (window.wakeWordSocket) {
+                window.wakeWordSocket.close();
+                window.wakeWordSocket = null;
+            }
+            
+            if (window.wakeWordProcessor) {
+                window.wakeWordProcessor.disconnect();
+                window.wakeWordProcessor = null;
+            }
+            
+            if (window.wakeWordContext) {
+                window.wakeWordContext.close();
+                window.wakeWordContext = null;
+            }
+            
+            if (window.wakeWordStream) {
+                window.wakeWordStream.getTracks().forEach(track => track.stop());
+                window.wakeWordStream = null;
+            }
+        }
+        async function loadAvailableVoices() {
+            try {
+                if (window.__TAURI__ && window.__TAURI__.invoke) {
+                    availableVoices = await window.__TAURI__.invoke('get_available_voices');
+                    populateVoiceSelect();
+                }
+            } catch (error) {
+                console.error('Error loading voices:', error);
+            }
+        }
+        
+        function populateVoiceSelect() {
+            if (!voiceSelect || !availableVoices.length) return;
+            
+            voiceSelect.innerHTML = '';
+            
+            // Group voices by language
+            const languageGroups = {};
+            
+            availableVoices.forEach(voice => {
+                const voiceId = voice.id || voice.name || '';
+                const voiceName = voice.name || voiceId;
+                const language = voice.language || getLanguageFromId(voiceId);
+                
+                if (!languageGroups[language]) {
+                    languageGroups[language] = [];
+                }
+                languageGroups[language].push({ id: voiceId, name: voiceName });
+            });
+            
+            // Create optgroups for each language
+            Object.keys(languageGroups).sort().forEach(language => {
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = language;
+                
+                languageGroups[language].forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.id;
+                    option.textContent = voice.name;
+                    if (voice.id === selectedVoice) option.selected = true;
+                    optgroup.appendChild(option);
+                });
+                
+                voiceSelect.appendChild(optgroup);
+            });
+            
+            console.log('Populated voice select with', availableVoices.length, 'voices');
+        }
+        
+        function getLanguageFromId(voiceId) {
+            if (voiceId.startsWith('en_US')) return 'en-US';
+            if (voiceId.startsWith('en_GB')) return 'en-GB';
+            if (voiceId.startsWith('es_')) return 'es';
+            if (voiceId.startsWith('fr_')) return 'fr';
+            if (voiceId.startsWith('de_')) return 'de';
+            if (voiceId.startsWith('it_')) return 'it';
+            if (voiceId.startsWith('pt_')) return 'pt';
+            if (voiceId.startsWith('ru_')) return 'ru';
+            if (voiceId.startsWith('zh_')) return 'zh';
+            if (voiceId.startsWith('ja_')) return 'ja';
+            if (voiceId.startsWith('hi_')) return 'hi';
+            return 'other';
+        }
+        
+        function getLanguageDisplayName(langCode) {
+            const languages = {
+                'en-US': 'English (US)',
+                'en-GB': 'English (UK)',
+                'es': 'Spanish',
+                'fr': 'French',
+                'de': 'German',
+                'it': 'Italian',
+                'pt': 'Portuguese',
+                'ru': 'Russian',
+                'zh': 'Chinese',
+                'ja': 'Japanese',
+                'hi': 'Hindi',
+                'other': 'Other'
+            };
+            return languages[langCode] || langCode;
+        }
+        
+        function formatVoiceName(voice) {
+            // Extract readable name from voice ID
+            const parts = voice.split('-');
+            if (parts.length >= 2) {
+                const name = parts[1];
+                const quality = parts[2] || '';
+                return `${name.charAt(0).toUpperCase() + name.slice(1)} ${quality ? `(${quality})` : ''}`.trim();
+            }
+            return voice.charAt(0).toUpperCase() + voice.slice(1);
+        }
+        
+        // Voice selection change handler
+        if (voiceSelect) {
+            voiceSelect.addEventListener('change', (e) => {
+                selectedVoice = e.target.value;
+                console.log('Voice changed to:', selectedVoice);
+            });
+        }
+        
+        // Load voices when Tauri is ready - NO startup greeting
+        setTimeout(async () => {
+            await loadAvailableVoices();
+            
+            // Don't play startup greeting - let user activate voice mode manually
+            console.log('App loaded in TEXT mode - click voice button to enable voice responses');
+            
+            // Wake word listening disabled temporarily
+            // if (!isExpanded) { startWakeWordListening(); }
+        }, 4000);
+
+        window.forceLogout = async function() {
+            try {
+                const invoke = getInvoke();
+                if (!invoke) return;
+                await invoke('logout_user');
+                await invoke('restart_to_login');
+            } catch (e) {
+                console.error('Force logout error:', e);
+            }
+        };
+        
+        function formatActivities(activities) {
+            if (!activities || !Array.isArray(activities) || activities.length === 0) {
+                responseText.innerHTML += '<div style="color: rgba(255,255,255,0.7);">No activities found</div>';
+                return;
+            }
+            
+            let html = responseText.innerHTML + `<div style="display: grid; gap: 10px; margin-top: 15px;">`;
+            
+            activities.slice(0, 20).forEach((activity) => {
+                html += `
+                    <div style="background: rgba(255,255,255,0.08); border-radius: 10px; padding: 14px; transition: all 0.2s;" 
+                         onmouseover="this.style.background='rgba(255,255,255,0.15)'" 
+                         onmouseout="this.style.background='rgba(255,255,255,0.08)'">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                            <div style="font-weight: 600; font-size: 14px; color: white;">${activity.subject || 'No Subject'}</div>
+                            <span style="font-size: 11px; color: rgba(255,255,255,0.6);">${activity.type_display || activity.type}</span>
+                        </div>
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.75); line-height: 1.5;">
+                            ${activity.date_label ? `<div style="margin-bottom: 4px;">📅 ${activity.date_label} ${activity.time_display || ''}</div>` : ''}
+                            ${activity.notes ? `<div style="margin-bottom: 4px;">📝 ${activity.notes}</div>` : ''}
+                            ${activity.status_display ? `<div style="margin-top: 6px;">${activity.status_display}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+            
+            if (activities.length > 20) {
+                html += `<div style="text-align: center; margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; color: rgba(255,255,255,0.7); font-size: 12px;">Showing 20 of ${activities.length} activities</div>`;
+            }
+            
+            responseText.innerHTML = html;
+        }
+        
+        function getStatusColor(status) {
+            switch (status?.toLowerCase()) {
+                case 'new': return '#007bff';
+                case 'qualified': return '#ffc107';
+                case 'converted': return '#28a745';
+                default: return '#6c757d';
+            }
+        }
+        
+        console.log('Simple NeeN Assistant loaded');
+        
+        // Debug what's available on window
+        console.log('Window object keys:', Object.keys(window));
+        console.log('window.__TAURI__:', window.__TAURI__);
+        console.log('window.__TAURI__ keys:', window.__TAURI__ ? Object.keys(window.__TAURI__) : 'N/A');
+        console.log('window.__TAURI__.invoke:', window.__TAURI__ ? window.__TAURI__.invoke : 'N/A');
+        console.log('window.__TAURI__.core:', window.__TAURI__ ? window.__TAURI__.core : 'N/A');
+        console.log('window.tauri:', window.tauri);
+        console.log('window.__TAURI_INVOKE__:', window.__TAURI_INVOKE__);
+        
+        // Check if Tauri is available in a different way
+        function checkTauriAvailability() {
+            console.log('Checking Tauri availability...');
+            console.log('window.__TAURI__:', !!window.__TAURI__);
+            console.log('window.tauri:', !!window.tauri);
+            console.log('window.__TAURI_INVOKE__:', !!window.__TAURI_INVOKE__);
+            
+            if (window.__TAURI__) {
+                console.log('Tauri API found!');
+                console.log('Tauri object:', window.__TAURI__);
+            } else {
+                console.log('Tauri API not found, retrying in 1 second...');
+                setTimeout(checkTauriAvailability, 1000);
+            }
+        }
+        
+        // Start checking immediately
+        checkTauriAvailability();
+
+        // === UNIFIED NOTIFICATION SYSTEM ===
+        let notifCount = 0;
+        const NOTIF_ICONS = {
+            activity_reminder: '⏰', new_lead: '🆕', lead_assigned: '👤', lead_assignment_confirmed: '✅',
+            lead_reassigned: '🔄', new_message: '💬', new_email: '📧', daily_summary: '📋'
+        };
+
+        function getInvoke() {
+            return window.__TAURI__?.core?.invoke || window.__TAURI__?.tauri?.invoke || window.__TAURI__?.invoke;
+        }
+
+        let _resizeTimer = null;
+        function showNotifPopup(type, title, body, meta, replyConfig) {
+            try {
+            console.log('🔔 showNotifPopup called:', type, title);
+            notifCount++;
+            const icon = NOTIF_ICONS[type] || '🔔';
+            const colors = { activity_reminder:'#ffc107', new_lead:'#4fc3f7', lead_assigned:'#66bb6a',
+                new_message:'#25D366', new_email:'#ea4335', daily_summary:'#9c27b0' };
+            const color = colors[type] || '#ffc107';
+
+            // Expand UI once (don't toggle if already expanded)
+            if (!isExpanded) window.toggleExpansion();
+            if (!responseArea.classList.contains('active')) responseArea.classList.add('active');
+
+            let replyHtml = '';
+            if (replyConfig) {
+                const rid = 'reply_' + notifCount;
+                window._replyConfigs = window._replyConfigs || {};
+                window._replyConfigs[rid] = replyConfig;
+                replyHtml = `
+                    <div style="margin-top:10px;">
+                        <textarea id="${rid}" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:white;padding:8px 10px;font-size:12px;resize:vertical;outline:none;font-family:inherit;min-height:50px;" placeholder="Type your reply...">⏳ AI is drafting a reply...</textarea>
+                        <button onclick="window._sendReply('${rid}')" style="margin-top:6px;padding:6px 14px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:${color};color:white;">Send Reply</button>
+                    </div>`;
+                // AI draft
+                if (replyConfig.aiPrompt) {
+                    setTimeout(async () => {
+                        try {
+                            const invoke = getInvoke();
+                            const raw = await invoke('send_chat_message', { message: replyConfig.aiPrompt });
+                            let draft = '';
+                            try { const j = JSON.parse(raw); draft = j.message || j.response || raw; } catch { draft = raw; }
+                            const ta = document.getElementById(rid);
+                            if (ta) ta.value = draft.replace(/<[^>]*>/g, '').trim();
+                        } catch (e) {
+                            const ta = document.getElementById(rid);
+                            if (ta) { ta.value = ''; ta.placeholder = 'AI draft failed — type manually...'; }
+                        }
+                    }, 100);
+                }
+            }
+
+            // Allow basic HTML (b, br, p, i) but escape scripts
+            const safeBody = body.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                .replace(/on\w+="[^"]*"/gi, '');
+
+            const html = `
+                <div style="border-left:4px solid ${color};padding:14px;background:rgba(255,255,255,0.06);border-radius:0 10px 10px 0;margin-bottom:10px;">
+                    <div style="font-weight:700;font-size:14px;margin-bottom:6px;">${icon} ${title}</div>
+                    <div style="font-size:13px;color:rgba(255,255,255,0.85);line-height:1.5;max-height:200px;overflow-y:auto;">${safeBody}</div>
+                    ${meta ? `<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-top:6px;">${meta}</div>` : ''}
+                    ${replyHtml}
+                </div>`;
+
+            // Prepend without destroying existing DOM
+            responseText.insertAdjacentHTML('afterbegin', html);
+
+            // Debounce resize so multiple notifications don't fight
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(resizeWindow, 300);
+            } catch (err) { console.error('🔔 showNotifPopup ERROR:', err); }
+        }
+
+        window._sendReply = async function(textareaId) {
+            const ta = document.getElementById(textareaId);
+            if (!ta) return;
+            const text = ta.value.trim();
+            if (!text) return;
+            const rc = (window._replyConfigs || {})[textareaId] || {};
+            const btn = ta.parentElement.querySelector('button');
+            btn.textContent = 'Sending...'; btn.style.opacity = '0.5';
+            try {
+                const invoke = getInvoke();
+                if (rc.channel === 'whatsapp') {
+                    await invoke('send_whatsapp_reply', {
+                        toPhone: rc.waPhone || '', message: text,
+                        toName: rc.waName || null, accountId: rc.waAccountId || null,
+                        entityType: rc.waEntityType || null, entityId: rc.waEntityId || null
+                    });
+                } else if (rc.channel === 'email') {
+                    console.log('📧 Sending email to:', rc.emTo, 'subject:', rc.emSubject);
+                    await invoke('send_email_reply', {
+                        toEmail: rc.emTo || '', subject: rc.emSubject || 'Re:',
+                        body: text, inReplyTo: null, mailAccountId: null
+                    });
+                }
+                btn.textContent = '✓ Sent'; btn.style.background = '#28a745';
+            } catch (e) {
+                console.error('Reply failed:', e);
+                btn.textContent = 'Failed — Retry'; btn.style.opacity = '1';
+            }
+        };
+
+        // --- Handle incoming WS messages by type ---
+        function handleActivityWsMessage(raw) {
+            const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            console.log('🔔 Activity WS payload:', JSON.stringify(data));
+            if (data.type === 'pong') return;
+
+            const notifType = data.notification?.type || data.type;
+            const n = data.notification || {};
+
+            if (notifType === 'activity_reminder') {
+                showNotifPopup('activity_reminder', n.title || 'Reminder',
+                    n.message || n.activitySubject || '',
+                    n.relatedToName ? `${n.relatedToType}: ${n.relatedToName} · ${n.reminderLabel}` : n.reminderLabel || '');
+            } else if (notifType === 'new_lead') {
+                showNotifPopup('new_lead', 'New Lead Captured',
+                    `${n.leadName || ''}${n.company ? ' — ' + n.company : ''}`,
+                    [n.source && `Source: ${n.source}`, n.lookingFor && `Looking for: ${n.lookingFor}`, n.phone].filter(Boolean).join(' · '));
+            } else if (notifType === 'lead_assigned') {
+                showNotifPopup('lead_assigned', 'Lead Assigned to You',
+                    n.message || `${n.leadName} from ${n.company}`,
+                    n.assignedBy ? `Assigned by ${n.assignedBy}` : '');
+            } else if (notifType === 'lead_assignment_confirmed') {
+                showNotifPopup('lead_assignment_confirmed', 'Assignment Confirmed',
+                    n.message || `${n.leadName} → ${n.assignedTo}`, '');
+            } else if (notifType === 'lead_reassigned') {
+                showNotifPopup('lead_reassigned', 'Lead Reassigned',
+                    n.message || `${n.leadName} → ${n.assignedTo}`, '');
+            }
+        }
+
+        function handleWhatsappWsMessage(raw) {
+            const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            console.log('📱 WhatsApp WS payload:', JSON.stringify(data));
+            if (data.type === 'pong') return;
+
+            if (data.type === 'new_message' && data.message) {
+                const m = data.message;
+                const c = data.conversation || {};
+                const name = m.from_name || c.remote_name || m.from_phone || '';
+                const phone = m.from_phone || c.remote_phone || '';
+                const aiPrompt = `Draft a short professional WhatsApp reply for this incoming message from ${name}: "${m.body}". Keep it concise and friendly. Only give the reply text, nothing else.`;
+                showNotifPopup('new_message',
+                    `WhatsApp: ${name}`,
+                    m.body || '',
+                    `${phone} · ${m.source || 'whatsapp'}`,
+                    { channel: 'whatsapp', placeholder: 'Reply on WhatsApp...', aiPrompt,
+                      waPhone: phone, waName: name, waAccountId: c.account_id || '', waEntityType: m.entity_type || '', waEntityId: m.entity_id || '' }
+                );
+            }
+        }
+
+        function handleEmailWsMessage(raw) {
+            const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            console.log('📧 Email WS payload:', JSON.stringify(data));
+            if (data.type === 'pong' || data.type === 'unread_count') return;
+
+            // Handle any email notification with useful data
+            const email = data.email || data.message || data;
+            if (email.from_name || email.from_email || email.subject) {
+                const aiPrompt = `Draft a professional email reply for this incoming email from ${email.from_name || email.from_email} with subject "${email.subject || ''}". Keep it professional and concise. Only give the reply body text, nothing else.`;
+                // Build display body - prefer body_html, fallback to body_text
+                let displayBody = '';
+                if (email.body_html) {
+                    // Sanitize: strip scripts/event handlers, keep formatting
+                    displayBody = email.body_html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '').replace(/on\w+="[^"]*"/gi, '');
+                } else {
+                    const rawBody = email.body_text || email.body || email.snippet || '';
+                    displayBody = rawBody.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g, '<br>');
+                }
+                const emailDisplay = `<div style="margin-bottom:8px;font-weight:600;">Subject: ${email.subject || '(no subject)'}</div><div style="font-size:12px;line-height:1.6;color:rgba(255,255,255,0.8);padding:8px;background:rgba(255,255,255,0.04);border-radius:6px;">${displayBody || '(no body)'}</div>`;
+                console.log('📧 Showing email popup, display length:', emailDisplay.length);
+                showNotifPopup('new_email',
+                    `Email: ${email.from_name || email.from_email || 'Unknown'}`,
+                    emailDisplay,
+                    `${email.account_email || ''} · ${email.folder_name || 'Inbox'}`,
+                    { channel: 'email', aiPrompt,
+                      emTo: email.from_email || '', emSubject: `Re: ${email.subject || ''}`,
+                      emInReplyTo: email.message_id || '', emAccountId: data.account?.id || email.mail_account_id || '' }
+                );
+            }
+        }
+
+        // --- Startup: fetch today's activities + connect all WS from JS directly ---
+        async function getAccessToken() {
+            try {
+                const invoke = getInvoke();
+                if (!invoke) return null;
+                // Read token from config via a simple Tauri command
+                const raw = await invoke('fetch_todays_activities');
+                // If this works, token is valid — extract it from config
+                return true;
+            } catch { return null; }
+        }
+
+        function connectWs(url, handler) {
+            let ws = null;
+            let pingInterval = null;
+            let retryDelay = 5000;
+            const maxRetryDelay = 60000;
+
+            function connect() {
+                console.log('WS connecting:', url.split('?')[0]);
+                ws = new WebSocket(url);
+
+                ws.onopen = () => {
+                    console.log('✅ WS connected:', url.split('?')[0]);
+                    retryDelay = 5000; // reset on success
+                    pingInterval = setInterval(() => {
+                        if (ws.readyState === WebSocket.OPEN) ws.send('{"type":"ping"}');
+                    }, 30000);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === 'pong') return;
+                        console.log('WS message:', url.split('?')[0], data.type);
+                        handler(data);
+                    } catch (e) { console.error('WS parse error:', e); }
+                };
+
+                ws.onclose = (e) => {
+                    console.log(`WS closed (code ${e.code}), retry in ${retryDelay/1000}s:`, url.split('?')[0]);
+                    clearInterval(pingInterval);
+                    setTimeout(connect, retryDelay);
+                    retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+                };
+
+                ws.onerror = () => { /* onclose will fire after this */ };
+            }
+
+            connect();
+        }
+
+        async function initNotifications() {
+            let attempts = 0;
+            while (!window.__TAURI__ && attempts < 50) {
+                await new Promise(r => setTimeout(r, 100));
+                attempts++;
+            }
+            if (!window.__TAURI__) return;
+
+            const invoke = getInvoke();
+            if (!invoke) return;
+
+            // 1. Get access token from config
+            let accessToken = null;
+            try {
+                // Use validate_session to check, then read token from stored config
+                // We'll extract token by making a dedicated call
+                accessToken = await invoke('get_access_token');
+            } catch (e) {
+                console.error('Could not get access token:', e);
+                return;
+            }
+            if (!accessToken) { console.error('No access token'); return; }
+
+            // 2. Fetch today's activities
+            try {
+                const raw = await invoke('fetch_todays_activities');
+                const data = JSON.parse(raw);
+                const acts = data.results || data;
+                if (acts && acts.length > 0) {
+                    const lines = acts.map(a => `• ${a.start_time?.slice(0,5) || ''} ${a.subject}`).join('<br>');
+                    showNotifPopup('daily_summary', `Today's Schedule (${acts.length})`, lines, '');
+                }
+            } catch (e) { console.error('Fetch activities error:', e); }
+
+            // 3. Connect all 3 WebSockets from JS directly
+            const base = 'wss://crmapi.9ance.com';
+            connectWs(`${base}/ws/activity/notifications/?token=${accessToken}`, handleActivityWsMessage);
+            connectWs(`${base}/ws/whatsapp/tenant/notifications/?token=${accessToken}`, handleWhatsappWsMessage);
+            connectWs(`${base}/ws/email/notifications/?token=${accessToken}`, handleEmailWsMessage);
+
+            // 4. WhatsApp REST polling fallback (in case WS doesn't push new_message)
+            let seenMsgIds = new Set();
+            async function pollWhatsapp() {
+                try {
+                    const raw = await invoke('fetch_whatsapp_unread');
+                    const data = JSON.parse(raw);
+                    const convos = data.results || data;
+                    if (Array.isArray(convos)) {
+                        convos.forEach(c => {
+                            const lastMsg = c.last_message || c.latest_message;
+                            if (lastMsg && !lastMsg.is_from_me && !seenMsgIds.has(lastMsg.id || lastMsg.message_id)) {
+                                const msgId = lastMsg.id || lastMsg.message_id || Date.now().toString();
+                                seenMsgIds.add(msgId);
+                                console.log('📱 Poll found new WhatsApp:', lastMsg);
+                                handleWhatsappWsMessage({
+                                    type: 'new_message',
+                                    message: {
+                                        id: msgId,
+                                        from_phone: c.client_phone || c.phone || '',
+                                        from_name: c.client_name || c.name || c.client_phone || '',
+                                        body: lastMsg.body || lastMsg.text || lastMsg.content || '',
+                                        timestamp: lastMsg.timestamp || lastMsg.created_at || '',
+                                        is_read: false
+                                    },
+                                    conversation: { id: c.id || '' }
+                                });
+                            }
+                        });
+                    }
+                } catch (e) { console.log('WhatsApp poll:', e); }
+            }
+            // Poll every 15s
+            pollWhatsapp();
+            setInterval(pollWhatsapp, 15000);
+        }
+
+        setTimeout(initNotifications, 5000);
+        
+        // Validate session on startup
+        async function validateSessionOnStartup() {
+            let attempts = 0;
+            while (!window.__TAURI__ && attempts < 50) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+            if (!window.__TAURI__) return;
+            
+            try {
+                const invoke = getInvoke();
+                if (!invoke) return;
+                console.log('Validating session...');
+                const isValid = await invoke('validate_session');
+                
+                if (!isValid) {
+                    console.log('Session invalid, redirecting to login...');
+                    await invoke('logout_user');
+                    await invoke('restart_to_login');
+                } else {
+                    console.log('Session is valid');
+                }
+            } catch (error) {
+                console.error('Session validation error:', error);
+            }
+        }
+        
+        // Run session validation after ensuring Tauri is ready
+        setTimeout(validateSessionOnStartup, 3000);
+    </script>
+</body>
+</html>
