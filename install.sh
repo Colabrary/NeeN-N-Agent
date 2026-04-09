@@ -5,6 +5,7 @@ set -e
 # Usage: curl -fsSL https://raw.githubusercontent.com/Colabrary/NeeN-N-Agent/main/install.sh | bash
 
 REPO_RAW="https://raw.githubusercontent.com/Colabrary/NeeN-N-Agent/main"
+RELEASE_BASE="https://github.com/Colabrary/NeeN-N-Agent/releases/latest/download"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[NeeN]${NC} $1"; }
@@ -16,7 +17,7 @@ ARCH="$(uname -m)"
 
 # ─── macOS ────────────────────────────────────────────────────────────────────
 if [ "$OS" = "Darwin" ]; then
-    DMG_URL="${REPO_RAW}/NeeN-Desktop-Agent.dmg"
+    DMG_URL="${RELEASE_BASE}/NeeN-Desktop-Agent.dmg"
     DMG_PATH="/tmp/NeeN-Desktop-Agent.dmg"
     INSTALL_PATH="/Applications/NeeN Desktop Agent.app"
     MOUNT_PATH="/Volumes/NeeN Desktop Agent"
@@ -86,7 +87,7 @@ PLIST
 
 # ─── Linux ────────────────────────────────────────────────────────────────────
 elif [ "$OS" = "Linux" ]; then
-    APPIMAGE_URL="${REPO_RAW}/NeeN-Desktop-Agent.AppImage"
+    APPIMAGE_URL="${RELEASE_BASE}/NeeN-Desktop-Agent.AppImage"
     INSTALL_DIR="$HOME/.local/bin"
     APPIMAGE_PATH="$INSTALL_DIR/neen-desktop-agent"
     AUTOSTART_DIR="$HOME/.config/autostart"

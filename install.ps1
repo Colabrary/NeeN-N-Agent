@@ -5,7 +5,8 @@ param([switch]$Uninstall)
 
 $ErrorActionPreference = "Stop"
 
-$RepoRaw    = "https://raw.githubusercontent.com/Colabrary/NeeN-N-Agent/main"
+$RepoRaw     = "https://raw.githubusercontent.com/Colabrary/NeeN-N-Agent/main"
+$ReleaseBase = "https://github.com/Colabrary/NeeN-N-Agent/releases/latest/download"
 $AppName    = "NeeN Desktop Agent"
 $ExeName    = "neen-desktop-agent.exe"
 $InstallDir = "$env:LOCALAPPDATA\NeeN\Desktop Agent"
@@ -28,7 +29,7 @@ if ($Uninstall) {
 }
 
 # ─── Download ─────────────────────────────────────────────────────────────────
-$InstallerUrl  = "$RepoRaw/NeeN-Desktop-Agent-Setup.exe"
+$InstallerUrl  = "$ReleaseBase/NeeN-Desktop-Agent-Setup.exe"
 $InstallerPath = "$env:TEMP\NeeN-Desktop-Agent-Setup.exe"
 
 Write-Info "Downloading NeeN Desktop Agent for Windows..."
