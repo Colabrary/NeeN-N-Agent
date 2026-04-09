@@ -2,86 +2,60 @@
 set -e
 
 # NeeN Desktop Agent - One-line installer for macOS & Linux
-# Usage: curl -fsSL https://releases.neen.ai/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Colabrary/NeeN-N-Agent/main/install.sh | bash
 
-RELEASE_URL="https://github.com/Colabrary/NeeN-N-Agent/releases/latest/download"
-APP_NAME="NeeN Desktop Agent"
-BUNDLE_ID="com.neen.desktop-agent"
-LAUNCH_AGENT_LABEL="com.neen.desktop-agent"
+REPO_RAW="https://raw.githubusercontent.com/Colabrary/NeeN-N-Agent/main"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[NeeN]${NC} $1"; }
 success() { echo -e "${GREEN}[NeeN]${NC} $1"; }
-warn()    { echo -e "${YELLOW}[NeeN]${NC} $1"; }
 error()   { echo -e "${RED}[NeeN]${NC} $1"; exit 1; }
 
-# ─── Detect OS ───────────────────────────────────────────────────────────────
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 
-case "$OS" in
-  Darwin)
-    case "$ARCH" in
-      arm64)  PLATFORM="macos-aarch64" ;;
-      x86_64) PLATFORM="macos-x86_64"  ;;
-      *)      error "Unsupported Mac architecture: $ARCH" ;;
-    esac
-    ;;
-  Linux)
-    case "$ARCH" in
-      x86_64) PLATFORM="linux-x86_64" ;;
-      aarch64) PLATFORM="linux-aarch64" ;;
-      *)      error "Unsupported Linux architecture: $ARCH" ;;
-    esac
-    ;;
-  *)
-    error "Unsupported OS: $OS. For Windows run install.ps1"
-    ;;
-esac
-
-info "Installing NeeN Desktop Agent for $PLATFORM..."
-
-# ─── macOS Install ───────────────────────────────────────────────────────────
+# ─── macOS ────────────────────────────────────────────────────────────────────
 if [ "$OS" = "Darwin" ]; then
-  DMG_URL="${RELEASE_URL}/${PLATFORM}/NeeN-Desktop-Agent.dmg"
-  DMG_PATH="/tmp/NeeN-Desktop-Agent.dmg"
-  MOUNT_PATH="/Volumes/NeeN Desktop Agent"
-  INSTALL_PATH="/Applications/NeeN Desktop Agent.app"
-  LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
-  PLIST_PATH="$LAUNCH_AGENT_DIR/${LAUNCH_AGENT_LABEL}.plist"
+    DMG_URL="${REPO_RAW}/NeeN-Desktop-Agent.dmg"
+    DMG_PATH="/tmp/NeeN-Desktop-Agent.dmg"
+    INSTALL_PATH="/Applications/NeeN Desktop Agent.app"
+    MOUNT_PATH="/Volumes/NeeN Desktop Agent"
+    PLIST_DIR="$HOME/Library/LaunchAgents"
+    PLIST_PATH="$PLIST_DIR/com.neen.desktop-agent.plist"
+    BUNDLE_ID="com.neen.desktop-agent"
 
-  info "Downloading NeeN Desktop Agent..."
-  curl -fsSL --progress-bar "$DMG_URL" -o "$DMG_PATH" || error "Download failed. Check your internet connection."
+    info "Detected macOS ($ARCH)"
+    info "Downloading NeeN Desktop Agent..."
+    curl -fsSL --progress-bar "$DMG_URL" -o "$DMG_PATH" || error "Download failed. Check your internet."
 
-  info "Mounting disk image..."
-  hdiutil attach "$DMG_PATH" -quiet -nobrowse
+    info "Installing..."
+    hdiutil attach "$DMG_PATH" -quiet -nobrowse
 
-  info "Installing to /Applications..."
-  if [ -d "$INSTALL_PATH" ]; then
-    rm -rf "$INSTALL_PATH"
-  fi
-  cp -R "$MOUNT_PATH/NeeN Desktop Agent.app" /Applications/
+    [ -d "$INSTALL_PATH" ] && rm -rf "$INSTALL_PATH"
+    cp -R "/Volumes/NeeN Desktop Agent/NeeN Desktop Agent.app" /Applications/ 2>/dev/null \
+        || cp -R "$MOUNT_PATH/"*.app /Applications/ 2>/dev/null \
+        || error "Could not copy app from DMG"
 
-  info "Unmounting disk image..."
-  hdiutil detach "$MOUNT_PATH" -quiet
-  rm -f "$DMG_PATH"
+    hdiutil detach "$MOUNT_PATH" -quiet 2>/dev/null || true
+    rm -f "$DMG_PATH"
 
-  # Remove quarantine flag so macOS doesn't block the app (no Gatekeeper prompt)
-  info "Removing quarantine restrictions..."
-  xattr -rd com.apple.quarantine "$INSTALL_PATH" 2>/dev/null || true
-  xattr -cr "$INSTALL_PATH" 2>/dev/null || true
+    # Remove Gatekeeper quarantine — no verification popup
+    info "Removing quarantine restrictions..."
+    xattr -rd com.apple.quarantine "$INSTALL_PATH" 2>/dev/null || true
+    xattr -cr "$INSTALL_PATH" 2>/dev/null || true
 
-  # ─── Register as LaunchAgent (auto-start at login) ────────────────────────
-  info "Registering as login service..."
-  mkdir -p "$LAUNCH_AGENT_DIR"
+    # Register as LaunchAgent — auto-starts at login
+    info "Registering as login service..."
+    mkdir -p "$PLIST_DIR"
+    launchctl unload "$PLIST_PATH" 2>/dev/null || true
 
-  cat > "$PLIST_PATH" <<PLIST
+    cat > "$PLIST_PATH" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${LAUNCH_AGENT_LABEL}</string>
+    <string>${BUNDLE_ID}</string>
     <key>ProgramArguments</key>
     <array>
         <string>/Applications/NeeN Desktop Agent.app/Contents/MacOS/neen-desktop-agent</string>
@@ -95,11 +69,6 @@ if [ "$OS" = "Darwin" ]; then
     </dict>
     <key>ProcessType</key>
     <string>Interactive</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>RUST_LOG</key>
-        <string>info</string>
-    </dict>
     <key>StandardOutPath</key>
     <string>${HOME}/Library/Logs/neen-desktop-agent.log</string>
     <key>StandardErrorPath</key>
@@ -108,41 +77,34 @@ if [ "$OS" = "Darwin" ]; then
 </plist>
 PLIST
 
-  # Unload previous version if running
-  launchctl unload "$PLIST_PATH" 2>/dev/null || true
+    launchctl load -w "$PLIST_PATH"
+    launchctl start "$BUNDLE_ID" 2>/dev/null || true
 
-  # Load and start the agent
-  launchctl load -w "$PLIST_PATH"
-  launchctl start "$LAUNCH_AGENT_LABEL" 2>/dev/null || true
+    success "NeeN Desktop Agent installed and running!"
+    info "Starts automatically at every login."
+    info "Logs: ~/Library/Logs/neen-desktop-agent.log"
 
-  success "NeeN Desktop Agent installed and started!"
-  info "It will automatically launch at every login."
-  info "Logs: ~/Library/Logs/neen-desktop-agent.log"
-  info ""
-  info "To stop:    launchctl stop ${LAUNCH_AGENT_LABEL}"
-  info "To disable: launchctl unload -w ${LAUNCH_AGENT_LABEL}.plist"
-
-# ─── Linux Install ───────────────────────────────────────────────────────────
+# ─── Linux ────────────────────────────────────────────────────────────────────
 elif [ "$OS" = "Linux" ]; then
-  APPIMAGE_URL="${RELEASE_URL}/${PLATFORM}/NeeN-Desktop-Agent.AppImage"
-  INSTALL_DIR="$HOME/.local/bin"
-  APPIMAGE_PATH="$INSTALL_DIR/neen-desktop-agent"
-  AUTOSTART_DIR="$HOME/.config/autostart"
-  DESKTOP_PATH="$AUTOSTART_DIR/neen-desktop-agent.desktop"
+    APPIMAGE_URL="${REPO_RAW}/NeeN-Desktop-Agent.AppImage"
+    INSTALL_DIR="$HOME/.local/bin"
+    APPIMAGE_PATH="$INSTALL_DIR/neen-desktop-agent"
+    AUTOSTART_DIR="$HOME/.config/autostart"
+    DESKTOP_PATH="$AUTOSTART_DIR/neen-desktop-agent.desktop"
 
-  mkdir -p "$INSTALL_DIR" "$AUTOSTART_DIR"
+    info "Detected Linux ($ARCH)"
+    mkdir -p "$INSTALL_DIR" "$AUTOSTART_DIR"
 
-  info "Downloading NeeN Desktop Agent..."
-  curl -fsSL --progress-bar "$APPIMAGE_URL" -o "$APPIMAGE_PATH" || error "Download failed."
-  chmod +x "$APPIMAGE_PATH"
+    info "Downloading NeeN Desktop Agent..."
+    curl -fsSL --progress-bar "$APPIMAGE_URL" -o "$APPIMAGE_PATH" || error "Download failed. Check your internet."
+    chmod +x "$APPIMAGE_PATH"
 
-  # Register as autostart via XDG
-  cat > "$DESKTOP_PATH" <<DESKTOP
+    # XDG autostart — starts at login for GNOME/KDE/XFCE etc.
+    cat > "$DESKTOP_PATH" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=NeeN Desktop Agent
 Exec=${APPIMAGE_PATH}
-Icon=neen-desktop-agent
 Comment=NeeN AI Desktop Agent
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
@@ -150,9 +112,16 @@ Hidden=false
 NoDisplay=false
 DESKTOP
 
-  # Start immediately
-  nohup "$APPIMAGE_PATH" > "$HOME/.local/share/neen-desktop-agent.log" 2>&1 &
+    info "Starting NeeN Desktop Agent..."
+    nohup "$APPIMAGE_PATH" > "$HOME/.local/share/neen-agent.log" 2>&1 &
 
-  success "NeeN Desktop Agent installed and started!"
-  info "It will automatically launch at every login."
+    success "NeeN Desktop Agent installed and running!"
+    info "Starts automatically at every login."
+    info "Log: ~/.local/share/neen-agent.log"
+
+else
+    echo "Unsupported OS: $OS"
+    echo "For Windows, run this in PowerShell:"
+    echo '  iwr -useb https://raw.githubusercontent.com/Colabrary/NeeN-N-Agent/main/install.ps1 | iex'
+    exit 1
 fi
