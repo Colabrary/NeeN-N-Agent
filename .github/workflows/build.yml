@@ -16,11 +16,6 @@ jobs:
             output_dmg: NeeN Desktop Agent_0.1.0_aarch64.dmg
             artifact: NeeN-Desktop-Agent.dmg
 
-          - platform: macos-13           # Intel Mac
-            target: x86_64-apple-darwin
-            output_dmg: NeeN Desktop Agent_0.1.0_x64.dmg
-            artifact: NeeN-Desktop-Agent-Intel.dmg
-
           - platform: windows-latest     # Windows x64
             target: x86_64-pc-windows-msvc
             artifact: NeeN-Desktop-Agent-Setup.exe
@@ -50,7 +45,13 @@ jobs:
             libssl-dev \
             libglib2.0-dev \
             libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev
+            libjavascriptcoregtk-4.1-dev \
+            libgdk-pixbuf2.0-dev \
+            libpango1.0-dev \
+            libatk1.0-dev \
+            libcairo2-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev
 
       # ── Rust ────────────────────────────────────────────────────────────────
       - name: Install Rust
@@ -124,19 +125,22 @@ jobs:
           merge-multiple: true
 
       - name: List downloaded files
-        run: ls -lh binaries/
+        run: find binaries -type f | sort
 
       - name: Copy binaries to repo root
         run: |
-          cp binaries/NeeN-Desktop-Agent.dmg . 2>/dev/null || true
-          cp binaries/NeeN-Desktop-Agent-Intel.dmg . 2>/dev/null || true
-          cp binaries/NeeN-Desktop-Agent-Setup.exe . 2>/dev/null || true
-          cp binaries/NeeN-Desktop-Agent.AppImage . 2>/dev/null || true
+          find binaries -name "*.dmg"     -exec cp {} . \; 2>/dev/null || true
+          find binaries -name "*.exe"     -exec cp {} . \; 2>/dev/null || true
+          find binaries -name "*.AppImage" -exec cp {} . \; 2>/dev/null || true
+          echo "=== Files in root after copy ==="
+          ls -lh *.dmg *.exe *.AppImage 2>/dev/null || echo "Some files missing"
 
       - name: Commit and push binaries
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add *.dmg *.exe *.AppImage 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "ci: update binaries [skip ci]"
-          git push
+          git pull --rebase origin main
+          git add -f NeeN-Desktop-Agent.dmg NeeN-Desktop-Agent-Intel.dmg NeeN-Desktop-Agent-Setup.exe NeeN-Desktop-Agent.AppImage 2>/dev/null || true
+          git status
+          git diff --staged --quiet && echo "Nothing to commit" || git commit -m "ci: update binaries [skip ci]"
+          git push origin main
