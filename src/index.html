@@ -1215,49 +1215,59 @@
                            '';
             
             // Check for data in multiple possible paths
-            let leadsData = null;
+            let resultData = null;
+            let actionType = jsonData.action_result?.action || jsonData.structured_data?.action || '';
             
             // Path 1: structured_data.data
             if (jsonData.structured_data && jsonData.structured_data.data) {
-                leadsData = jsonData.structured_data.data;
+                resultData = jsonData.structured_data.data;
             }
             // Path 2: action_result.data
             else if (jsonData.action_result && jsonData.action_result.data) {
-                leadsData = jsonData.action_result.data;
+                resultData = jsonData.action_result.data;
             }
             // Path 3: assistant_message.action.result.data
             else if (jsonData.assistant_message && 
                      jsonData.assistant_message.action && 
                      jsonData.assistant_message.action.result && 
                      jsonData.assistant_message.action.result.data) {
-                leadsData = jsonData.assistant_message.action.result.data;
+                resultData = jsonData.assistant_message.action.result.data;
+                actionType = jsonData.assistant_message.action.type || actionType;
             }
-            // Path 4: data directly
+            // Path 4: action_result directly (single object result)
+            else if (jsonData.action_result && typeof jsonData.action_result === 'object' && !jsonData.action_result.data) {
+                resultData = jsonData.action_result;
+            }
+            // Path 5: data directly
             else if (jsonData.data) {
-                if (Array.isArray(jsonData.data)) {
-                    leadsData = jsonData.data;
-                } else if (typeof jsonData.data === 'object') {
-                    // Single object - wrap in array
-                    leadsData = [jsonData.data];
-                }
+                resultData = jsonData.data;
+            }
+
+            // Normalize to array
+            if (resultData && !Array.isArray(resultData)) {
+                resultData = [resultData];
             }
             
             // Render response
             let html = '';
             
-            // Show AI message if exists
+            // Show AI message as a subtle header
             if (aiMessage) {
-                html = `<div style="padding: 20px; background: rgba(255,255,255,0.08); border-radius: 12px; color: rgba(255,255,255,0.95); font-size: 15px; line-height: 1.6;">${aiMessage}</div>`;
+                html = `<div style="padding: 14px 20px; background: rgba(255,255,255,0.05); border-radius: 12px; color: rgba(255,255,255,0.85); font-size: 14px; line-height: 1.5; margin-bottom: 10px;">${aiMessage}</div>`;
             }
             
-            // Show data if exists
-            if (leadsData && Array.isArray(leadsData) && leadsData.length > 0) {
+            // Show data as cards
+            if (resultData && Array.isArray(resultData) && resultData.length > 0) {
                 responseText.innerHTML = html;
-                // Check if it's activities or leads based on data structure
-                if (leadsData[0].subject || leadsData[0].type_display) {
-                    formatActivities(leadsData);
+                const firstItem = resultData[0];
+                // Detect type and render appropriate card
+                if (firstItem.subject || firstItem.type_display || firstItem.start_time) {
+                    formatActivities(resultData);
+                } else if (firstItem.name || firstItem.email || firstItem.phone || firstItem.company || firstItem.status) {
+                    formatLeads(resultData);
                 } else {
-                    formatLeads(leadsData);
+                    // Generic card for any object (created/updated items)
+                    formatGenericCards(resultData, actionType);
                 }
                 return aiMessage;
             } else if (aiMessage) {
@@ -1394,7 +1404,74 @@
             }
         }
         
+        function getStatusColor(status) {
+            switch (status?.toLowerCase()) {
+                case 'new': return '#007bff';
+                case 'qualified': return '#ffc107';
+                case 'converted': return '#28a745';
+                case 'pending': return '#ffc107';
+                case 'completed': return '#28a745';
+                case 'call': return '#4fc3f7';
+                case 'meeting': return '#9c27b0';
+                case 'task': return '#ff9800';
+                default: return '#6c757d';
+            }
+        }
+        
         // Conversational mode functions
+        function formatGenericCards(items, actionType) {
+            const actionIcons = { create_lead:'✅', create_activity:'📅', create_quote:'📋', create_order:'📦', create_amc:'🔧', update_activity_status:'✏️', assign_entity:'👤', update_activity:'✏️' };
+            const icon = actionIcons[actionType] || '✅';
+            
+            let html = responseText.innerHTML;
+            html += `<div style="display:grid;grid-template-columns:1fr;gap:12px;margin-top:10px;">`;
+            
+            items.forEach(item => {
+                const skipKeys = ['id', 'uuid', 'created_at', 'updated_at', 'tenant', 'owner_id', 'is_deleted', 'related_to_id', 'entity_id'];
+                const title = item.name || item.subject || item.quote_number || item.order_number || item.subscription_id || item.customer_name || item.entity_name || 'Item';
+                const status = item.status || item.new_status || '';
+                const statusColor = getStatusColor(status);
+                
+                html += `<div style="background:rgba(255,255,255,0.08);border-radius:12px;padding:16px;border-left:4px solid ${statusColor};">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <div style="font-weight:600;font-size:15px;color:white;">${icon} ${title}</div>
+                        ${status ? `<span style="background:${statusColor};color:white;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:600;text-transform:uppercase;">${status}</span>` : ''}
+                    </div>
+                    <div style="font-size:13px;color:rgba(255,255,255,0.75);line-height:1.8;">`;
+                
+                // Special rendering for quotes/orders with items
+                if (item.items && Array.isArray(item.items)) {
+                    html += `<div style="margin-bottom:8px;padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;">`;
+                    item.items.forEach(i => {
+                        html += `<div style="display:flex;justify-content:space-between;"><span>${i.description || i.product}</span><span>₹${i.total || i.unit_price} × ${i.quantity}</span></div>`;
+                    });
+                    html += `</div>`;
+                    if (item.gst_info) html += `<div style="margin-bottom:4px;">🧾 GST: ${item.gst_info.gst_rate}% (${item.gst_info.gst_type})</div>`;
+                    if (item.total_amount) html += `<div style="margin-bottom:4px;font-weight:600;font-size:15px;">💰 Total: ₹${item.total_amount}</div>`;
+                    if (item.valid_until) html += `<div style="margin-bottom:4px;">📅 Valid until: ${item.valid_until}</div>`;
+                    if (item.expected_delivery) html += `<div style="margin-bottom:4px;">🚚 Delivery: ${item.expected_delivery}</div>`;
+                } else {
+                    // Generic key-value rendering
+                    Object.entries(item).filter(([k, v]) => !skipKeys.includes(k) && v !== null && v !== '' && typeof v !== 'object' && k !== 'name' && k !== 'subject' && k !== 'status' && k !== 'new_status').slice(0, 8).forEach(([key, val]) => {
+                        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                        const isPhone = key.includes('phone') || key.includes('mobile');
+                        if (isPhone && val) {
+                            html += `<div style="margin-bottom:4px;"><span style="color:rgba(255,255,255,0.5);">${label}:</span> <a href="#" onclick="clickToCall('${val}')" style="color:#66bb6a;text-decoration:none;">📞 ${val}</a></div>`;
+                        } else if (key.includes('email') && val) {
+                            html += `<div style="margin-bottom:4px;"><span style="color:rgba(255,255,255,0.5);">${label}:</span> <a href="mailto:${val}" style="color:#4fc3f7;text-decoration:none;">📧 ${val}</a></div>`;
+                        } else {
+                            html += `<div style="margin-bottom:4px;"><span style="color:rgba(255,255,255,0.5);">${label}:</span> ${val}</div>`;
+                        }
+                    });
+                }
+                
+                html += `</div></div>`;
+            });
+            
+            html += `</div>`;
+            responseText.innerHTML = html;
+        }
+
         async function startConversationalMode() {
             console.log('Starting conversational mode...');
             
@@ -1784,29 +1861,39 @@
             let html = responseText.innerHTML + `<div style="display: grid; gap: 10px; margin-top: 15px;">`;
             
             activities.slice(0, 20).forEach((activity) => {
+                const typeColors = {meeting:'#9c27b0',call:'#4fc3f7',task:'#ff9800',demo:'#28a745',site_visits:'#795548'};
+                const typeColor = typeColors[activity.type?.toLowerCase()] || '#6c757d';
+                
                 html += `
-                    <div style="background: rgba(255,255,255,0.08); border-radius: 10px; padding: 14px; transition: all 0.2s;" 
-                         onmouseover="this.style.background='rgba(255,255,255,0.15)'" 
-                         onmouseout="this.style.background='rgba(255,255,255,0.08)'">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                    <div style="background: rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; border-left: 4px solid ${typeColor};">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <div style="font-weight: 600; font-size: 14px; color: white;">${activity.subject || 'No Subject'}</div>
-                            <span style="font-size: 11px; color: rgba(255,255,255,0.6);">${activity.type_display || activity.type}</span>
+                            <span style="background:${typeColor};color:white;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;">${activity.type_display || activity.type}</span>
                         </div>
-                        <div style="font-size: 12px; color: rgba(255,255,255,0.75); line-height: 1.5;">
-                            ${activity.date_label ? `<div style="margin-bottom: 4px;">📅 ${activity.date_label} ${activity.time_display || ''}</div>` : ''}
-                            ${activity.notes ? `<div style="margin-bottom: 4px;">📝 ${activity.notes}</div>` : ''}
-                            ${activity.status_display ? `<div style="margin-top: 6px;">${activity.status_display}</div>` : ''}
+                        <div style="font-size: 12px; color: rgba(255,255,255,0.75); line-height: 1.6;">
+                            ${activity.related_to_name ? `<div style="margin-bottom:3px;">👤 ${activity.related_to_name}</div>` : ''}
+                            ${activity.date_label ? `<div style="margin-bottom:3px;">📅 ${activity.date_label} ${activity.start_time || activity.time_display || ''}</div>` : ''}
+                            ${activity.notes ? `<div style="margin-bottom:3px;opacity:0.7;">📝 ${activity.notes}</div>` : ''}
+                            ${activity.status_display ? `<div>${activity.status_display}</div>` : ''}
                         </div>
+                        ${activity.quick_actions ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
+                            ${activity.quick_actions.map(qa => {
+                                const styles = {success:'background:#28a745;color:white',danger:'background:#dc3545;color:white',warning:'background:#ffc107;color:#000',secondary:'background:rgba(255,255,255,0.15);color:white'};
+                                const btnStyle = styles[qa.style] || styles.secondary;
+                                if (qa.needs_input) {
+                                    return `<button onclick="quickActionWithInput('${qa.action}','${JSON.stringify(qa.data).replace(/'/g,"\\'")}','${qa.input_type}')" style="padding:5px 10px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;${btnStyle}">${qa.label}</button>`;
+                                }
+                                return `<button onclick="executeQuickAction('${qa.action}',${JSON.stringify(JSON.stringify(qa.data))})" style="padding:5px 10px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;${btnStyle}">${qa.label}</button>`;
+                            }).join('')}
+                        </div>` : ''}
                     </div>
                 `;
             });
             
             html += `</div>`;
-            
             if (activities.length > 20) {
-                html += `<div style="text-align: center; margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; color: rgba(255,255,255,0.7); font-size: 12px;">Showing 20 of ${activities.length} activities</div>`;
+                html += `<div style="text-align:center;margin-top:15px;padding:10px;background:rgba(255,255,255,0.05);border-radius:8px;color:rgba(255,255,255,0.7);font-size:12px;">Showing 20 of ${activities.length} activities</div>`;
             }
-            
             responseText.innerHTML = html;
         }
         
@@ -1913,6 +2000,28 @@
         }
         window.acknowledgeReminder = acknowledgeReminder;
 
+        // Execute quick actions from activity/lead cards
+        window.executeQuickAction = async function(action, dataStr) {
+            const data = JSON.parse(dataStr);
+            const invoke = getInvoke();
+            if (!invoke) return;
+            try {
+                // Send as a chat command so AI processes it
+                const msg = `${action}: ${JSON.stringify(data)}`;
+                const result = await invoke('send_chat_message', { message: msg });
+                // Re-render response
+                formatResponse(result);
+            } catch(e) { console.error('Quick action failed:', e); }
+        };
+
+        window.quickActionWithInput = function(action, dataStr, inputType) {
+            const input = prompt(inputType === 'datetime' ? 'Enter new date/time (e.g. 2026-06-01 3:00 PM):' : 'Enter value:');
+            if (!input) return;
+            const data = JSON.parse(dataStr);
+            data.new_value = input;
+            window.executeQuickAction(action, JSON.stringify(data));
+        };
+
         let _resizeTimer = null;
         function showNotifPopup(type, title, body, meta, replyConfig) {
             try {
@@ -2015,22 +2124,27 @@
             if (data.type === 'pong') return;
 
             const notifType = data.notification?.type || data.type;
-            const n = data.notification || {};
+            const n = data.notification || data;
 
             if (notifType === 'activity_reminder') {
-                const actId = n.activity?.id || '';
-                const phone = n.relatedEntity?.phone || '';
-                let actionHtml = `<div style="display:flex;gap:6px;margin-top:10px;">
-                    <button onclick="acknowledgeReminder('${actId}','accepted')" style="padding:5px 12px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:#28a745;color:white;">✓ Accept</button>
-                    <button onclick="acknowledgeReminder('${actId}','snoozed',5)" style="padding:5px 12px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:#ffc107;color:#000;">⏰ Snooze 5m</button>
-                    <button onclick="acknowledgeReminder('${actId}','declined')" style="padding:5px 12px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:#dc3545;color:white;">✗ Decline</button>
-                    ${phone ? `<button onclick="clickToCall('${phone}')" style="padding:5px 12px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:#66bb6a;color:white;">📞 Call</button>` : ''}
+                // Extract activity ID from multiple possible paths
+                const actId = n.activity?.id || n.activityId || n.id || data.activity_id || '';
+                const phone = n.relatedEntity?.phone || n.phone || '';
+                const subject = n.activity?.subject || n.subject || n.title || n.message || 'Reminder';
+                const message = n.message || `${subject} starts soon`;
+                const reminderLabel = n.reminderLabel || n.reminder_label || '';
+                const entityName = n.relatedEntity?.name || n.relatedToName || '';
+                
+                let actionHtml = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
+                    <button onclick="acknowledgeReminder('${actId}','accepted');this.parentElement.innerHTML='✅ Accepted'" style="padding:6px 14px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:#28a745;color:white;">✓ Accept</button>
+                    <button onclick="acknowledgeReminder('${actId}','snoozed',5);this.parentElement.innerHTML='⏰ Snoozed 5m'" style="padding:6px 14px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:#ffc107;color:#000;">⏰ Snooze 5m</button>
+                    <button onclick="acknowledgeReminder('${actId}','declined');this.parentElement.innerHTML='✗ Declined'" style="padding:6px 14px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:#dc3545;color:white;">✗ Decline</button>
+                    ${phone ? `<button onclick="clickToCall('${phone}')" style="padding:6px 14px;border-radius:6px;border:none;font-size:11px;cursor:pointer;font-weight:600;background:#66bb6a;color:white;">📞 Call</button>` : ''}
                 </div>`;
-                const bodyText = (n.message || n.activitySubject || '') + actionHtml;
-                const metaText = n.relatedEntity?.name ? `${n.relatedEntity.type}: ${n.relatedEntity.name} · ${n.reminderLabel}` : n.reminderLabel || '';
-                showNotifPopup('activity_reminder', n.title || 'Reminder', bodyText, metaText);
-                // Native OS toast
-                showNativeToast(n.title || 'Activity Reminder', n.message || n.activitySubject || '');
+                const bodyText = message + actionHtml;
+                const metaText = entityName ? `${entityName} · ${reminderLabel}` : reminderLabel;
+                showNotifPopup('activity_reminder', '⏰ ' + subject, bodyText, metaText);
+                showNativeToast('Activity Reminder', message);
             } else if (notifType === 'new_lead') {
                 showNotifPopup('new_lead', 'New Lead Captured',
                     `${n.leadName || ''}${n.company ? ' — ' + n.company : ''}`,
@@ -2181,7 +2295,17 @@
                 const data = JSON.parse(raw);
                 const acts = data.results || data;
                 if (acts && acts.length > 0) {
-                    const lines = acts.map(a => `• ${a.start_time?.slice(0,5) || ''} ${a.subject}`).join('<br>');
+                    const lines = acts.map(a => {
+                        const time = a.start_time?.slice(0,5) || '';
+                        const id = a.id || '';
+                        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.1);">
+                            <span>• ${time} ${a.subject}</span>
+                            <div style="display:flex;gap:4px;">
+                                <button onclick="acknowledgeReminder('${id}','accepted');this.textContent='✓'" style="padding:3px 8px;border-radius:4px;border:none;font-size:10px;cursor:pointer;background:#28a745;color:white;">✓</button>
+                                ${a.phone ? `<button onclick="clickToCall('${a.phone}')" style="padding:3px 8px;border-radius:4px;border:none;font-size:10px;cursor:pointer;background:#66bb6a;color:white;">📞</button>` : ''}
+                            </div>
+                        </div>`;
+                    }).join('');
                     showNotifPopup('daily_summary', `Today's Schedule (${acts.length})`, lines, '');
                 }
             } catch (e) { console.error('Fetch activities error:', e); }

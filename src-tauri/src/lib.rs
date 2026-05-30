@@ -567,7 +567,7 @@ async fn acknowledge_reminder(activity_id: String, action: String, snooze_minute
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("https://crmapi.9ance.com/api/activity-reminders/{}/acknowledge/", activity_id))
+        .post(format!("https://crmapi.9ance.com/api/activities/{}/acknowledge-reminder/", activity_id))
         .bearer_auth(&token)
         .json(&payload)
         .send().await.map_err(|e| e.to_string())?;
