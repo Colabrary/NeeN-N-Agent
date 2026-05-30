@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>NeeN Phone</title>
+    <style>
+        body { margin:0; padding:20px; background:#111; color:white; font-family:-apple-system,sans-serif; }
+        #status { font-size:12px; color:#ffc107; margin-bottom:10px; }
+        #number { font-size:22px; font-weight:700; text-align:center; margin:10px 0; }
+        #timer { font-size:18px; text-align:center; color:#28a745; margin:10px 0; }
+        button { padding:12px 24px; border:none; border-radius:8px; font-size:16px; font-weight:700; cursor:pointer; }
+        #hangup { background:#dc3545; color:white; width:100%; margin-top:10px; }
+        audio { display:none; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/blueimp-md5/2.19.0/js/md5.min.js"></script>
+</head>
+<body>
+    <div id="status">● Connecting...</div>
+    <div id="number"></div>
+    <div id="timer"></div>
+    <button id="hangup" style="display:none" onclick="hangup()">✕ End Call</button>
+    <audio id="remoteAudio" autoplay></audio>
+
+    <script>
+    const params = new URLSearchParams(window.location.search);
+    const mobile = params.get('mobile') || '';
+    const sipUser = params.get('sipUser') || '';
+    const sipPass = params.get('sipPass') || '';
+    const server = params.get('server') || 'kenyavoice.rpdigitalphone.com';
+    const wsPort = params.get('wsPort') || '5000';
+    const wsPath = params.get('wsPath') || '/ws';
+    const fullName = params.get('fullName') || sipUser;
+
+    document.getElementById('number').textContent = '📞 ' + mobile;
+
+    let ws = null, pc = null, callStart = null, timerInterval = null;
+    let cseq = 1, authAttempted = false;
+    const callId = 'c' + Math.random().toString(36).substr(2, 10);
+    const tag = Math.random().toString(36).substr(2, 8);
+    const wsUrl = `wss://${server}:${wsPort}${wsPath}`;
+    const sipDomain = server;
+
+    function setStatus(msg, color) {
+        document.getElementById('status').textContent = '● ' + msg;
+        if (color) document.getElementById('status').style.color = color;
+    }
+
+    function connect() {
+        setStatus('Connecting to ' + server + '...');
+        ws = new WebSocket(wsUrl, 'sip');
+        ws.onopen = () => { setStatus('Registering ' + sipUser + '...'); register(); };
+        ws.onmessage = (e) => handleMsg(e.data);
+        ws.onerror = () => setStatus('Connection failed', '#dc3545');
+        ws.onclose = (e) => setStatus('Disconnected (' + e.code + ')', '#dc3545');
+    }
+
+    function branch() { return 'z9hG4bK' + Math.random().toString(36).substr(2, 12); }
+
+    function register(authHeader) {
+        const lines = [
+            `REGISTER sip:${sipDomain} SIP/2.0`,
+            `Via: SIP/2.0/WSS df7jal23ls0d.invalid;branch=${branch()};rport`,
+            `From: "${fullName}" <sip:${sipUser}@${sipDomain}>;tag=${tag}`,
+            `To: <sip:${sipUser}@${sipDomain}>`,
+            `Call-ID: reg-${callId}`,
+            `CSeq: ${cseq++} REGISTER`,
+            `Contact: <sip:${sipUser}@df7jal23ls0d.invalid;transport=ws>;expires=600`,
+            `Max-Forwards: 70`,
+            `User-Agent: NeeN-Phone/1.0`,
+        ];
+        if (authHeader) lines.push(authHeader);
+        lines.push(`Content-Length: 0`, '', '');
+        ws.send(lines.join('\r\n'));
+    }
+
+    let inviteAuthAttempted = false;
+    let lastInviteSdp = null;
+    let callConnected = false;
+
+    function handleMsg(data) {
+        const firstLine = data.split('\r\n')[0];
+        const cseqMatch = data.match(/CSeq:\s*(\d+)\s*(\w+)/i);
+        const method = cseqMatch ? cseqMatch[2] : '';
+        console.log('SIP:', firstLine, '| method:', method);
+
+        // Respond to OPTIONS keepalive
+        if (data.startsWith('OPTIONS ')) {
+            const optCallId = (data.match(/Call-ID:\s*(.+)/i) || [])[1]?.trim();
+            const optFrom = (data.match(/From:\s*(.+)/i) || [])[1]?.trim();
+            const optTo = (data.match(/To:\s*(.+)/i) || [])[1]?.trim();
+            const optVia = (data.match(/Via:\s*(.+)/i) || [])[1]?.trim();
+            const optCseq = (data.match(/CSeq:\s*(.+)/i) || [])[1]?.trim();
+            if (optCallId) {
+                ws.send([
+                    `SIP/2.0 200 OK`,
+                    `Via: ${optVia}`,
+                    `From: ${optFrom}`,
+                    `To: ${optTo}`,
+                    `Call-ID: ${optCallId}`,
+                    `CSeq: ${optCseq}`,
+                    `Content-Length: 0`, '', ''
+                ].join('\r\n'));
+            }
+            return;
+        }
+
+        // 401 for REGISTER
+        if ((data.includes('401') || data.includes('407')) && method === 'REGISTER') {
+            if (authAttempted) { setStatus('Register auth failed', '#dc3545'); return; }
+            authAttempted = true;
+            const nonce = (data.match(/nonce="([^"]+)"/) || [])[1];
+            const realm = (data.match(/realm="([^"]+)"/) || [])[1];
+            if (nonce && realm) {
+                setStatus('Authenticating...');
+                const ha1 = md5(sipUser + ':' + realm + ':' + sipPass);
+                const ha2 = md5('REGISTER:sip:' + sipDomain);
+                const resp = md5(ha1 + ':' + nonce + ':' + ha2);
+                const auth = `Authorization: Digest username="${sipUser}",realm="${realm}",nonce="${nonce}",uri="sip:${sipDomain}",response="${resp}",algorithm=MD5`;
+                register(auth);
+            }
+            return;
+        }
+
+        // 401 for INVITE
+        if ((data.includes('401') || data.includes('407')) && method === 'INVITE') {
+            if (inviteAuthAttempted) return; // ignore repeated
+            inviteAuthAttempted = true;
+            const nonce = (data.match(/nonce="([^"]+)"/) || [])[1];
+            const realm = (data.match(/realm="([^"]+)"/) || [])[1];
+            if (nonce && realm && lastInviteSdp) {
+                setStatus('Authenticating call...');
+                const ha1 = md5(sipUser + ':' + realm + ':' + sipPass);
+                const ha2 = md5('INVITE:sip:' + mobile + '@' + sipDomain);
+                const resp = md5(ha1 + ':' + nonce + ':' + ha2);
+                const auth = `Authorization: Digest username="${sipUser}",realm="${realm}",nonce="${nonce}",uri="sip:${mobile}@${sipDomain}",response="${resp}",algorithm=MD5`;
+                sendInvite(lastInviteSdp, auth);
+            }
+            return;
+        }
+
+        // Ignore 401 for OPTIONS (just keepalive)
+        if ((data.includes('401') || data.includes('407')) && method === 'OPTIONS') return;
+
+        // 200 OK for REGISTER
+        if (data.includes('200 OK') && method === 'REGISTER') {
+            setStatus('Registered ✓', '#28a745');
+            if (mobile && !callConnected) setTimeout(dial, 500);
+            return;
+        }
+
+        // Call progress
+        if (data.includes('100 Trying')) { setStatus('Trying...', '#ffc107'); return; }
+        if (data.includes('180 Ringing') || data.includes('183 Session')) { 
+            setStatus('Ringing...', '#ffc107');
+            // 183 may contain early media SDP
+            const sdp = data.split('\r\n\r\n')[1];
+            if (sdp && sdp.includes('v=0') && pc && pc.signalingState === 'have-local-offer') {
+                pc.setRemoteDescription(new RTCSessionDescription({type:'answer', sdp})).catch(e => console.log('Early SDP:', e.message));
+            }
+            return;
+        }
+
+        // 200 OK for INVITE - call connected
+        if (data.includes('200 OK') && method === 'INVITE') {
+            // Always send ACK (server retransmits 200 until ACK received)
+            ws.send([
+                `ACK sip:${mobile}@${sipDomain} SIP/2.0`,
+                `Via: SIP/2.0/WSS df7jal23ls0d.invalid;branch=${branch()};rport`,
+                `From: "${fullName}" <sip:${sipUser}@${sipDomain}>;tag=${tag}`,
+                `To: <sip:${mobile}@${sipDomain}>`,
+                `Call-ID: ${callId}`,
+                `CSeq: ${cseq++} ACK`,
+                `Max-Forwards: 70`,
+                `Content-Length: 0`, '', ''
+            ].join('\r\n'));
+
+            if (!callConnected) {
+                callConnected = true;
+                setStatus('Connected!', '#28a745');
+                document.getElementById('hangup').style.display = 'block';
+                callStart = Date.now();
+                timerInterval = setInterval(() => {
+                    const s = Math.floor((Date.now() - callStart) / 1000);
+                    document.getElementById('timer').textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+                }, 1000);
+                const sdp = data.split('\r\n\r\n')[1];
+                if (sdp && sdp.includes('v=0') && pc && pc.signalingState !== 'stable') {
+                    pc.setRemoteDescription(new RTCSessionDescription({type:'answer', sdp})).catch(e => console.log('SDP skip:', e.message));
+                }
+            }
+            return;
+        }
+
+        // Call ended
+        if (data.includes('BYE') || data.includes('CANCEL') || data.includes('603') || data.includes('486') || data.includes('487')) {
+            setStatus('Call ended', '#ffc107');
+            endCall();
+        }
+    }
+
+    async function dial() {
+        setStatus('Calling ' + mobile + '...', '#ffc107');
+        document.getElementById('hangup').style.display = 'block';
+
+        pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        stream.getTracks().forEach(t => pc.addTrack(t, stream));
+        pc.ontrack = (e) => { document.getElementById('remoteAudio').srcObject = e.streams[0]; };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        // Wait for ICE
+        await new Promise(r => { 
+            pc.onicecandidate = (e) => { if (!e.candidate) r(); };
+            setTimeout(r, 2000);
+        });
+
+        lastInviteSdp = pc.localDescription.sdp;
+        sendInvite(lastInviteSdp, null);
+    }
+
+    function sendInvite(sdp, authHeader) {
+        const lines = [
+            `INVITE sip:${mobile}@${sipDomain} SIP/2.0`,
+            `Via: SIP/2.0/WSS df7jal23ls0d.invalid;branch=${branch()};rport`,
+            `From: "${fullName}" <sip:${sipUser}@${sipDomain}>;tag=${tag}`,
+            `To: <sip:${mobile}@${sipDomain}>`,
+            `Call-ID: ${callId}`,
+            `CSeq: ${cseq++} INVITE`,
+            `Contact: <sip:${sipUser}@df7jal23ls0d.invalid;transport=ws>`,
+            `Content-Type: application/sdp`,
+            `Max-Forwards: 70`,
+            `User-Agent: NeeN-Phone/1.0`,
+        ];
+        if (authHeader) lines.push(authHeader);
+        lines.push(`Content-Length: ${sdp.length}`, '', sdp);
+        ws.send(lines.join('\r\n'));
+    }
+
+    function hangup() {
+        if (ws && ws.readyState === 1) {
+            ws.send([
+                `BYE sip:${mobile}@${sipDomain} SIP/2.0`,
+                `Via: SIP/2.0/WSS df7jal23ls0d.invalid;branch=${branch()};rport`,
+                `From: "${fullName}" <sip:${sipUser}@${sipDomain}>;tag=${tag}`,
+                `To: <sip:${mobile}@${sipDomain}>`,
+                `Call-ID: ${callId}`,
+                `CSeq: ${cseq++} BYE`,
+                `Max-Forwards: 70`,
+                `Content-Length: 0`, '', ''
+            ].join('\r\n'));
+        }
+        endCall();
+    }
+
+    function endCall() {
+        clearInterval(timerInterval);
+        if (pc) { pc.close(); pc = null; }
+        document.getElementById('hangup').style.display = 'none';
+        setStatus('Call ended', '#ffc107');
+        // Notify parent window to clear call bar
+        try { window.opener?.endCall?.(); } catch(e) {}
+        setTimeout(() => window.close(), 1500);
+    }
+
+    // Send BYE if window is closed during active call
+    window.addEventListener('beforeunload', () => { if (callConnected) hangup(); });
+
+    connect();
+    </script>
+</body>
+</html>

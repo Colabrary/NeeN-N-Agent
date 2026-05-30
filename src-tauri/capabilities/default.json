@@ -4,6 +4,8 @@
   "description": "enables the default permissions",
   "windows": [
     "main",
+    "login",
+    "softphone",
     "notif_*"
   ],
   "permissions": [
@@ -19,6 +21,10 @@
     "fs:allow-read-file",
     "fs:allow-read-dir",
     "fs:allow-exists",
-    "shell:default"
+    "shell:default",
+    "notification:default",
+    "notification:allow-notify",
+    "notification:allow-request-permission",
+    "notification:allow-is-permission-granted"
   ]
 }

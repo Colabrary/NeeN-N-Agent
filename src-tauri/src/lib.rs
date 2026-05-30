@@ -16,6 +16,51 @@ use screen_capture::ScreenCapture;
 use system_control::SystemControl;
 use voice_processor::VoiceProcessor;
 
+const KEYCHAIN_SERVICE: &str = "com.neen.desktop-agent";
+
+fn save_to_keychain(email: &str, password: &str) -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, "email").map_err(|e| e.to_string())?;
+    entry.set_password(email).map_err(|e| e.to_string())?;
+    let pass_entry = keyring::Entry::new(KEYCHAIN_SERVICE, "password").map_err(|e| e.to_string())?;
+    pass_entry.set_password(password).map_err(|e| e.to_string())?;
+    log::info!("Credentials saved to OS Keychain");
+    Ok(())
+}
+
+fn get_from_keychain() -> Option<(String, String)> {
+    let email_entry = keyring::Entry::new(KEYCHAIN_SERVICE, "email").ok()?;
+    let pass_entry = keyring::Entry::new(KEYCHAIN_SERVICE, "password").ok()?;
+    let email = email_entry.get_password().ok()?;
+    let password = pass_entry.get_password().ok()?;
+    Some((email, password))
+}
+
+fn clear_keychain() {
+    if let Ok(e) = keyring::Entry::new(KEYCHAIN_SERVICE, "email") { let _ = e.delete_password(); }
+    if let Ok(e) = keyring::Entry::new(KEYCHAIN_SERVICE, "password") { let _ = e.delete_password(); }
+}
+
+#[tauri::command]
+async fn has_saved_credentials() -> Result<bool, String> {
+    Ok(get_from_keychain().is_some())
+}
+
+#[tauri::command]
+async fn auto_login() -> Result<bool, String> {
+    if let Some((email, password)) = get_from_keychain() {
+        log::info!("Auto-login with saved credentials for: {}", email);
+        login_user(email, password).await
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+async fn clear_saved_credentials() -> Result<(), String> {
+    clear_keychain();
+    Ok(())
+}
+
 #[tauri::command]
 async fn login_user(email: String, password: String) -> Result<bool, String> {
     log::info!("Login attempt for email: {}", email);
@@ -104,6 +149,9 @@ async fn login_user(email: String, password: String) -> Result<bool, String> {
                         config.neen_api.device_fingerprint = Some(fingerprint.to_string());
                         let _ = config.save();
                         
+                        // Save credentials to OS Keychain for auto-login
+                        let _ = save_to_keychain(&email, &password);
+                        
                         log::info!("Login successful, tokens saved with tunnel security");
                         Ok(true)
                     } else {
@@ -135,20 +183,20 @@ async fn show_main_app(app: tauri::AppHandle) -> Result<(), String> {
         let _ = login_window.close();
     }
     
-    // Create main app window
+    // Create main app window (panel style, starts hidden - opened via tray icon)
     match tauri::WebviewWindowBuilder::new(
         &app,
         "main",
         tauri::WebviewUrl::App("index.html".into())
     )
-    .title("NeeN Agent")
-    .inner_size(800.0, 800.0)
-    .resizable(true)
+    .title("NeeN AI Assistant")
+    .inner_size(800.0, 600.0)
+    .resizable(false)
     .decorations(false)
     .always_on_top(true)
     .skip_taskbar(true)
     .transparent(true)
-    .visible_on_all_workspaces(true)
+    .visible(false)
     .build() {
         Ok(_) => Ok(()),
         Err(e) => Err(e.to_string())
@@ -202,12 +250,13 @@ fn create_main_window(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>
         tauri::WebviewUrl::App("index.html".into())
     )
     .title("NeeN AI Assistant")
-    .inner_size(800.0, 800.0)
-    .resizable(true)
+    .inner_size(800.0, 600.0)
+    .resizable(false)
     .decorations(false)
     .always_on_top(true)
     .transparent(true)
     .skip_taskbar(true)
+    .visible(false)
     .build()?;
     
     Ok(())
@@ -258,7 +307,10 @@ async fn logout_user() -> Result<(), String> {
     config.neen_api.device_fingerprint = None;
     config.save().map_err(|e| e.to_string())?;
     
-    log::info!("User logged out successfully - tokens cleared");
+    // Clear saved credentials from Keychain
+    clear_keychain();
+    
+    log::info!("User logged out successfully - tokens and credentials cleared");
     Ok(())
 }
 
@@ -284,9 +336,18 @@ async fn send_chat_message(message: String) -> Result<String, String> {
     let client = reqwest::Client::new();
     let api_url = "https://crmapi.9ance.com/api/ai/chat/";
     
+    // Use user-specific session and include today's date for context
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let session_id = format!("desktop_{}", config.neen_api.device_fingerprint.as_deref().unwrap_or("default"));
+    
     let request_body = serde_json::json!({
         "message": message,
-        "session_id": "desktop_agent_session"
+        "session_id": session_id,
+        "context": {
+            "platform": "desktop",
+            "today": today,
+            "timezone": chrono::Local::now().format("%z").to_string()
+        }
     });
     
     let mut request = client.post(api_url).json(&request_body);
@@ -412,6 +473,107 @@ async fn fetch_whatsapp_unread() -> Result<String, String> {
     } else {
         Err(format!("API error: {}", resp.status()))
     }
+}
+
+#[tauri::command]
+async fn open_softphone_window(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri::Manager;
+    // Close existing softphone window if any
+    if let Some(w) = app.get_webview_window("softphone") {
+        let _ = w.close();
+    }
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "softphone",
+        tauri::WebviewUrl::App(url.into())
+    )
+    .title("NeeN Phone")
+    .inner_size(380.0, 350.0)
+    .resizable(false)
+    .always_on_top(true)
+    .center()
+    .decorations(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn fetch_softphone_config() -> Result<String, String> {
+    let config = AppConfig::load().map_err(|e| e.to_string())?;
+    let token = config.neen_api.access_token.ok_or("No access token")?;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get("https://crmapi.9ance.com/api/telephony/agents/me/softphone-config/")
+        .bearer_auth(&token)
+        .send().await.map_err(|e| e.to_string())?;
+
+    if resp.status().is_success() {
+        Ok(resp.text().await.map_err(|e| e.to_string())?)
+    } else {
+        Err(format!("Softphone config error: {}", resp.status()))
+    }
+}
+
+#[tauri::command]
+async fn click_to_call(customer_number: String, lead_id: Option<String>, contact_id: Option<String>) -> Result<String, String> {
+    let config = AppConfig::load().map_err(|e| e.to_string())?;
+    let token = config.neen_api.access_token.ok_or("No access token")?;
+
+    // First get agent info
+    let client = reqwest::Client::new();
+    let agent_resp = client
+        .get("https://crmapi.9ance.com/api/telephony/agents/me/")
+        .bearer_auth(&token)
+        .send().await.map_err(|e| e.to_string())?;
+
+    if !agent_resp.status().is_success() {
+        return Err(format!("Failed to get agent: {}", agent_resp.status()));
+    }
+    let agent: serde_json::Value = agent_resp.json().await.map_err(|e| e.to_string())?;
+    let agent_id = agent["id"].as_str().ok_or("No agent ID")?;
+
+    let mut payload = serde_json::json!({
+        "agent_id": agent_id,
+        "customer_number": customer_number,
+        "wait_seconds": 30
+    });
+    if let Some(lid) = lead_id { payload["lead_id"] = serde_json::json!(lid); }
+    if let Some(cid) = contact_id { payload["contact_id"] = serde_json::json!(cid); }
+
+    let resp = client
+        .post("https://crmapi.9ance.com/api/telephony/calls/click-to-call/")
+        .bearer_auth(&token)
+        .json(&payload)
+        .send().await.map_err(|e| e.to_string())?;
+
+    let status = resp.status();
+    let body = resp.text().await.map_err(|e| e.to_string())?;
+    if status.is_success() || status.as_u16() == 202 {
+        Ok(body)
+    } else {
+        Err(format!("Call failed ({}): {}", status, body))
+    }
+}
+
+#[tauri::command]
+async fn acknowledge_reminder(activity_id: String, action: String, snooze_minutes: Option<u32>) -> Result<String, String> {
+    let config = AppConfig::load().map_err(|e| e.to_string())?;
+    let token = config.neen_api.access_token.ok_or("No access token")?;
+
+    let mut payload = serde_json::json!({"action": action});
+    if let Some(mins) = snooze_minutes { payload["snooze_minutes"] = serde_json::json!(mins); }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("https://crmapi.9ance.com/api/activity-reminders/{}/acknowledge/", activity_id))
+        .bearer_auth(&token)
+        .json(&payload)
+        .send().await.map_err(|e| e.to_string())?;
+
+    let body = resp.text().await.map_err(|e| e.to_string())?;
+    Ok(body)
 }
 
 #[tauri::command]
@@ -627,7 +789,7 @@ async fn stop_voice_listening() -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::default().build())
-        // .plugin(tauri_plugin_notification::init())  // Disabled - causing permission errors
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
@@ -641,55 +803,50 @@ pub fn run() {
 
             // ── System tray icon ─────────────────────────────────────────────
             {
-                use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+                use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
                 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
-                let show_item = MenuItemBuilder::with_id("show", "Show NeeN").build(app)?;
                 let quit_item = MenuItemBuilder::with_id("quit", "Quit NeeN").build(app)?;
                 let tray_menu = MenuBuilder::new(app)
-                    .item(&show_item)
-                    .separator()
                     .item(&quit_item)
                     .build()?;
 
-                let icon = app.default_window_icon()
-                    .expect("No app icon found")
-                    .clone();
+                let icon_bytes = include_bytes!("../icons/32x32.png");
+                let icon = tauri::image::Image::from_bytes(icon_bytes)
+                    .expect("Failed to load tray icon");
 
                 TrayIconBuilder::new()
                     .icon(icon)
                     .icon_as_template(true)
                     .tooltip("NeeN AI Assistant")
                     .menu(&tray_menu)
+                    .menu_on_left_click(false)
                     .on_menu_event(|app, event| match event.id().as_ref() {
-                        "show" => {
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.set_focus();
-                            } else if let Some(w) = app.get_webview_window("login") {
-                                let _ = w.show();
-                                let _ = w.set_focus();
-                            }
-                        }
                         "quit" => {
                             app.exit(0);
                         }
                         _ => {}
                     })
                     .on_tray_icon_event(|tray, event| {
-                        if let TrayIconEvent::Click { .. } = event {
-                            let app = tray.app_handle();
-                            // Toggle main window on single click
-                            if let Some(w) = app.get_webview_window("main") {
-                                if w.is_visible().unwrap_or(false) {
-                                    let _ = w.hide();
-                                } else {
+                        if let TrayIconEvent::Click { position, button, button_state, .. } = event {
+                            if button == MouseButton::Left && button_state == MouseButtonState::Up {
+                                let app = tray.app_handle();
+                                if let Some(w) = app.get_webview_window("main") {
+                                    if w.is_visible().unwrap_or(false) {
+                                        let _ = w.hide();
+                                    } else {
+                                        // Position window below tray icon, centered on click
+                                        let window_width = 800.0_f64;
+                                        let x = position.x - (window_width / 2.0);
+                                        let y = position.y + 4.0;
+                                        let _ = w.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+                                        let _ = w.show();
+                                        let _ = w.set_focus();
+                                    }
+                                } else if let Some(w) = app.get_webview_window("login") {
                                     let _ = w.show();
                                     let _ = w.set_focus();
                                 }
-                            } else if let Some(w) = app.get_webview_window("login") {
-                                let _ = w.show();
-                                let _ = w.set_focus();
                             }
                         }
                     })
@@ -716,6 +873,12 @@ pub fn run() {
                     let _ = login_window.close();
                 }
                 create_main_window(app)?;
+            } else {
+                // Show login window
+                if let Some(login_window) = app.get_webview_window("login") {
+                    let _ = login_window.show();
+                    let _ = login_window.set_focus();
+                }
             }
 
             let ai_engine = AIEngine::new(config.clone());
@@ -769,8 +932,22 @@ pub fn run() {
             connect_all_ws,
             send_whatsapp_reply,
             send_email_reply,
-            mark_notification_read
+            mark_notification_read,
+            click_to_call,
+            acknowledge_reminder,
+            fetch_softphone_config,
+            open_softphone_window,
+            has_saved_credentials,
+            auto_login,
+            clear_saved_credentials
         ])
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::Focused(false) = event {
+                    let _ = window.hide();
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

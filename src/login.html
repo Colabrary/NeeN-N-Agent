@@ -36,10 +36,11 @@
         }
         
         .logo {
-            font-size: 24px;
+            font-size: 28px;
             font-weight: bold;
             margin-bottom: 20px;
             color: white;
+            letter-spacing: 2px;
         }
         
         .input-group {
@@ -125,6 +126,11 @@
         <button class="login-btn" id="loginBtn" onclick="login()">Login</button>
         
         <div id="message"></div>
+    </div>
+
+    <div style="position:fixed;bottom:20px;left:0;right:0;text-align:center;opacity:0.5;">
+        <a href="https://9ance.com" target="_blank" style="text-decoration:none;color:white;font-size:11px;">powered by
+        <img src="9ance-logo.png" alt="9ance" style="height:40px;vertical-align:middle;margin-left:4px;"></a>
     </div>
 
     <script>
@@ -251,6 +257,25 @@
         
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', async function() {
+            // Try auto-login with saved credentials
+            try {
+                await waitForTauri();
+                const hasCreds = await window.__TAURI__.tauri.invoke('has_saved_credentials');
+                if (hasCreds) {
+                    document.getElementById('message').innerHTML = '<div class="success">Logging in automatically...</div>';
+                    document.getElementById('loginBtn').disabled = true;
+                    const success = await window.__TAURI__.tauri.invoke('auto_login');
+                    if (success) {
+                        document.getElementById('message').innerHTML = '<div class="success">Welcome back! Starting NeeN...</div>';
+                        setTimeout(async () => {
+                            await window.__TAURI__.tauri.invoke('show_main_app');
+                        }, 1000);
+                        return;
+                    }
+                    document.getElementById('loginBtn').disabled = false;
+                    document.getElementById('message').innerHTML = '<div class="error">Session expired. Please login again.</div>';
+                }
+            } catch(e) { console.log('Auto-login skip:', e); }
             document.getElementById('email').focus();
         });
     </script>

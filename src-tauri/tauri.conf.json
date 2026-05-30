@@ -9,13 +9,6 @@
   "app": {
     "macOSPrivateApi": true,
     "withGlobalTauri": true,
-    "trayIcon": {
-      "id": "neen-tray",
-      "iconPath": "icons/tray-icon.png",
-      "iconAsTemplate": true,
-      "menuOnLeftClick": false,
-      "title": "NeeN AI"
-    },
     "windows": [
       {
         "label": "login",
@@ -26,9 +19,10 @@
         "fullscreen": false,
         "center": true,
         "decorations": true,
-        "alwaysOnTop": false,
-        "skipTaskbar": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
         "transparent": false,
+        "visible": false,
         "url": "login.html"
       }
     ],
@@ -39,6 +33,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "icons/tray-icon.png": "icons/tray-icon.png"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -62,7 +59,8 @@
       "entitlements": null,
       "exceptionDomain": null,
       "signingIdentity": null,
-      "providerShortName": null
+      "providerShortName": null,
+      "infoPlist": "Info.plist"
     },
     "linux": {
       "deb": {
